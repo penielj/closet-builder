@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import Dexie from 'dexie'
 import { ClosetDB, SETTINGS_KEY } from './schema'
 import {
-  type NewItem, addItem, deleteItem, ensureSettings, laundryDone, rateOutfit, rememberChoices,
-  setComfortOffset, setInHamper, setLocation, skipToday, updateItem,
+  type NewItem, addItem, deleteItem, dislikeOutfit, ensureSettings, laundryDone, saveForecast, saveToday,
+  setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, updateItem,
 } from './repo'
 
 let db: ClosetDB
@@ -21,14 +22,20 @@ const changes = async () => (await db.settings.get(SETTINGS_KEY))!.changesSinceB
 describe('ensureSettings', () => {
   it('creates the DESIGN §7 first-launch defaults once', async () => {
     expect(await db.settings.get(SETTINGS_KEY)).toEqual({
-      comfortOffset: 0, lastOccasion: 'casual', lastColorMode: 'auto', changesSinceBackup: 0,
+      comfortOffset: 0, lastOccasion: 'casual', changesSinceBackup: 0,
     })
     await setComfortOffset(db, 3)
     expect((await ensureSettings(db)).comfortOffset).toBe(3) // doesn't reset an existing row
   })
+
+  it('survives being called twice at once, as StrictMode does', async () => {
+    const fresh = new ClosetDB(`repo-test-${++dbCount}`)
+    await Promise.all([ensureSettings(fresh), ensureSettings(fresh)])
+    expect(await fresh.settings.count()).toBe(1)
+  })
 })
 
-describe('change tracking (BACKUP-IMPLEMENTATION §2.6)', () => {
+describe('change tracking (DESIGN §7)', () => {
   it('counts adding, editing and deleting items', async () => {
     const id = await addItem(db, shirt)
     await updateItem(db, id, { name: 'Ivory shirt' })
@@ -36,19 +43,21 @@ describe('change tracking (BACKUP-IMPLEMENTATION §2.6)', () => {
     expect(await changes()).toBe(3)
   })
 
-  it('counts ratings and the comfort setting', async () => {
-    await rateOutfit(db, [1, 2, 3], 'like')
+  it('counts dislikes and the comfort setting', async () => {
+    await dislikeOutfit(db, [1, 2])
     await setComfortOffset(db, -3)
     expect(await changes()).toBe(2)
   })
 
-  it('does not count the hamper, laundry, "not today", remembered choices or location', async () => {
+  it('does not count the hamper, laundry, "not today", occasion, location or today', async () => {
     const id = await addItem(db, shirt)
     await setInHamper(db, id, true)
     await laundryDone(db)
     await skipToday(db, id, '2026-10-21')
-    await rememberChoices(db, { lastOccasion: 'work', lastColorMode: 'tonal' })
+    await setLastOccasion(db, 'work')
     await setLocation(db, 51.5074, -0.1278, 'London')
+    await saveToday(db, { date: '2026-10-21', itemIds: [id], locked: [] })
+    await saveForecast(db, '2026-10-21', { high: 14, low: 6, rainChance: 20 })
     expect(await changes()).toBe(1) // only the add
   })
 
@@ -74,10 +83,10 @@ describe('items', () => {
     expect((await db.items.toArray()).filter((i) => i.inHamper)).toHaveLength(0)
   })
 
-  it('deleting an item removes ratings that include it and keeps the others', async () => {
+  it('deleting an item removes dislikes that include it and keeps the others', async () => {
     const a = await addItem(db, shirt)
-    await rateOutfit(db, [a, 50], 'dislike')
-    await rateOutfit(db, [60, 70], 'like')
+    await dislikeOutfit(db, [a, 50])
+    await dislikeOutfit(db, [60, 70])
     await deleteItem(db, a)
     expect((await db.outfits.toArray()).map((o) => o.key)).toEqual(['60|70'])
   })
@@ -96,10 +105,67 @@ describe('items', () => {
   })
 })
 
-describe('ratings', () => {
+describe('dislikes', () => {
   it('uses one key per outfit regardless of order, sorted numerically', async () => {
-    await rateOutfit(db, [10, 9, 100], 'like')
-    await rateOutfit(db, [100, 10, 9], 'dislike')
+    await dislikeOutfit(db, [10, 9, 100])
+    await dislikeOutfit(db, [100, 10, 9])
     expect(await db.outfits.toArray()).toEqual([{ key: '9|10|100', itemIds: [9, 10, 100], rating: 'dislike' }])
+  })
+})
+
+describe('today', () => {
+  const settings = async () => (await db.settings.get(SETTINGS_KEY))!
+
+  it('keeps the outfit when a forecast arrives the same day', async () => {
+    await saveToday(db, { date: '2026-10-21', itemIds: [1, 2, 3], locked: [2] })
+    await saveForecast(db, '2026-10-21', { high: 14, low: 6, rainChance: 20 })
+    expect((await settings()).today).toEqual({
+      date: '2026-10-21', itemIds: [1, 2, 3], locked: [2], forecast: { high: 14, low: 6, rainChance: 20 },
+    })
+  })
+
+  it('replaces today as a whole when the forecast is for a new day', async () => {
+    await saveToday(db, { date: '2026-10-21', itemIds: [1, 2, 3], locked: [2] })
+    await saveForecast(db, '2026-10-22', { high: 9, low: 2, rainChance: 70 })
+    expect((await settings()).today).toEqual({
+      date: '2026-10-22', itemIds: [], locked: [], forecast: { high: 9, low: 2, rainChance: 70 },
+    })
+  })
+
+  it('keeps a same-day forecast when the outfit is saved after it', async () => {
+    await saveForecast(db, '2026-10-21', { high: 14, low: 6, rainChance: 20 })
+    await saveToday(db, { date: '2026-10-21', itemIds: [1, 2], locked: [1] })
+    expect((await settings()).today).toEqual({
+      date: '2026-10-21', itemIds: [1, 2], locked: [1], forecast: { high: 14, low: 6, rainChance: 20 },
+    })
+    await saveToday(db, { date: '2026-10-22', itemIds: [3, 4], locked: [] })
+    expect((await settings()).today).toEqual({ date: '2026-10-22', itemIds: [3, 4], locked: [] })
+  })
+
+  it('a new location drops the saved forecast but keeps the outfit', async () => {
+    await saveForecast(db, '2026-10-21', { high: 14, low: 6, rainChance: 20 })
+    await saveToday(db, { ...(await settings()).today!, itemIds: [1, 2] })
+    await setLocation(db, 40.7128, -74.006, 'New York')
+    expect((await settings()).today).toEqual({ date: '2026-10-21', itemIds: [1, 2], locked: [] })
+  })
+})
+
+describe('v2 migration (DESIGN §8 step 1 cleanup)', () => {
+  it('drops color modes, lastBackupSource and liked outfits', async () => {
+    const name = `repo-test-${++dbCount}`
+    const v1 = new Dexie(name)
+    v1.version(1).stores({ items: '++id, category, createdAt', outfits: 'key', settings: '' })
+    await v1.table('settings').add(
+      { comfortOffset: 0, lastOccasion: 'work', lastColorMode: 'tonal', lastBackupSource: 'share', changesSinceBackup: 4 },
+      SETTINGS_KEY)
+    await v1.table('outfits').bulkAdd([
+      { key: '1|2', itemIds: [1, 2], rating: 'like' },
+      { key: '3|4', itemIds: [3, 4], rating: 'dislike' },
+    ])
+    v1.close()
+
+    const v2 = new ClosetDB(name)
+    expect(await v2.settings.get(SETTINGS_KEY)).toEqual({ comfortOffset: 0, lastOccasion: 'work', changesSinceBackup: 4 })
+    expect((await v2.outfits.toArray()).map((o) => o.key)).toEqual(['3|4'])
   })
 })

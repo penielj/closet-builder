@@ -16,7 +16,7 @@ function loadImage(file: Blob): Promise<HTMLImageElement> {
 }
 
 // Re-encoding through a canvas removes all EXIF data, including GPS. That keeps home
-// coordinates out of the database and every backup (BACKUP-IMPLEMENTATION §2.8), so
+// coordinates out of the database and every backup (DESIGN §4), so
 // don't replace this with storing the original file.
 export async function processPhoto(file: Blob): Promise<{ photo: Blob; color: PaletteColor | null }> {
   const img = await loadImage(file)
@@ -34,7 +34,7 @@ export async function processPhoto(file: Blob): Promise<{ photo: Blob; color: Pa
   return { photo, color: sampleCenterColor(img) }
 }
 
-// Samples the center 50% of the photo (DESIGN §5.1 "Auto color"), downscaled so the
+// Samples the center 50% of the photo (DESIGN §4 "Auto color"), downscaled so the
 // vote runs over about a thousand pixels.
 function sampleCenterColor(img: HTMLImageElement): PaletteColor | null {
   const canvas = document.createElement('canvas')

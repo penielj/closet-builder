@@ -27,7 +27,7 @@ export default function ItemForm({ item, items, onDone }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
 
-  // Brand autocompletes from existing items so spellings stay consistent (DESIGN §5.1).
+  // Brand autocompletes from existing items so spellings stay consistent (DESIGN §4).
   const brands = useMemo(() => {
     const seen = new Map<string, string>()
     for (const i of items) if (i.brand) seen.set(i.brand.toLowerCase(), i.brand)

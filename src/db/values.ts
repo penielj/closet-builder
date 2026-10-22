@@ -1,4 +1,4 @@
-// Fixed tag values, copied exactly from DESIGN §6.8. Every backup file stores these
+// Fixed tag values, copied exactly from DESIGN §6. Every backup file stores these
 // strings, so renaming or removing one later needs a backup migration. Adding one doesn't.
 
 export const CATEGORIES = ['top', 'bottom', 'dress', 'shoes', 'outerwear'] as const
@@ -6,17 +6,15 @@ export const PATTERNS = ['solid', 'striped', 'checked', 'print'] as const
 export const OCCASIONS = ['casual', 'work', 'formal', 'workout'] as const
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const
 export const WARMTHS = [1, 2, 3] as const
-export const COLOR_MODES = ['auto', 'monochrome', 'tonal', 'complementary'] as const
 
 export type Category = (typeof CATEGORIES)[number]
 export type Pattern = (typeof PATTERNS)[number]
 export type Occasion = (typeof OCCASIONS)[number]
 export type Season = (typeof SEASONS)[number]
 export type Warmth = (typeof WARMTHS)[number]
-export type ColorMode = (typeof COLOR_MODES)[number]
 
-// The 18 named colors from DESIGN §6.7. `hex` is the swatch shown in the UI and the
-// target that auto color snaps to. The picker's hue values are derived from it later.
+// The 18 named colors from DESIGN §6. `hex` is the swatch shown in the UI and the
+// target that auto color snaps to. `neutral` drives the picker's one-statement-color rule.
 export const PALETTE = [
   { name: 'black', hex: '#1c1c1c', neutral: true },
   { name: 'white', hex: '#f4f4f2', neutral: true },
@@ -40,6 +38,7 @@ export const PALETTE = [
 
 export type PaletteColor = (typeof PALETTE)[number]['name']
 export const COLOR_NAMES = PALETTE.map((c) => c.name) as PaletteColor[]
+export const NEUTRALS: ReadonlySet<PaletteColor> = new Set(PALETTE.filter((c) => c.neutral).map((c) => c.name))
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   top: 'Tops', bottom: 'Bottoms', dress: 'Dresses', shoes: 'Shoes', outerwear: 'Outerwear',

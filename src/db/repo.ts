@@ -1,12 +1,13 @@
 import type { Table } from 'dexie'
 import {
-  type ClosetDB, type Item, type ItemId, type Settings,
+  type ClosetDB, type Forecast, type Item, type ItemId, type Settings, type TodayState,
   SETTINGS_KEY, defaultSettings, outfitKey, roundCoord, sortIds,
 } from './schema'
+import type { Occasion } from './values'
 
-// The only write path in the app (BACKUP-IMPLEMENTATION §3.6). Meaningful changes bump
-// changesSinceBackup in the same transaction as the write. Temporary state (hamper,
-// "not today", remembered occasion and color mode) is written without counting.
+// The only write path in the app (DESIGN §7). Real changes bump changesSinceBackup in
+// the same transaction as the write. Temporary state (hamper, "not today", occasion,
+// location, today's outfit) is written without counting.
 
 async function tracked<T>(db: ClosetDB, tables: Table[], fn: () => Promise<T>): Promise<T> {
   return db.transaction('rw', [...tables, db.settings], async () => {
@@ -30,12 +31,13 @@ export const updateItem = (db: ClosetDB, id: ItemId, patch: ItemPatch) =>
 export const deleteItem = (db: ClosetDB, id: ItemId) =>
   tracked(db, [db.items, db.outfits], async () => {
     await db.items.delete(id)
-    await db.outfits.filter((o) => o.itemIds.includes(id)).delete() // ratings for a deleted item are now orphans
+    await db.outfits.filter((o) => o.itemIds.includes(id)).delete() // dislikes for a deleted item are now orphans
   })
 
-export const rateOutfit = (db: ClosetDB, ids: ItemId[], rating: 'like' | 'dislike') =>
+// `ids` is the outfit's base + shoes, never the coat (DESIGN §5, outfit identity).
+export const dislikeOutfit = (db: ClosetDB, ids: ItemId[]) =>
   tracked(db, [db.outfits], async () => {
-    await db.outfits.put({ key: outfitKey(ids), itemIds: sortIds(ids), rating })
+    await db.outfits.put({ key: outfitKey(ids), itemIds: sortIds(ids), rating: 'dislike' })
   })
 
 export const setComfortOffset = (db: ClosetDB, value: Settings['comfortOffset']) =>
@@ -51,19 +53,45 @@ export const laundryDone = (db: ClosetDB) =>
 export const skipToday = (db: ClosetDB, id: ItemId, today: string) =>
   db.items.update(id, { skipDate: today })
 
-export const rememberChoices = (db: ClosetDB, choices: Partial<Pick<Settings, 'lastOccasion' | 'lastColorMode'>>) =>
-  db.settings.update(SETTINGS_KEY, choices)
+export const setLastOccasion = (db: ClosetDB, occasion: Occasion) =>
+  db.settings.update(SETTINGS_KEY, { lastOccasion: occasion })
 
+// A new place needs a new forecast, so today's saved one is dropped. The outfit stays.
 export const setLocation = (db: ClosetDB, lat: number, lon: number, label?: string) =>
-  db.settings.update(SETTINGS_KEY, { location: { lat: roundCoord(lat), lon: roundCoord(lon), label } })
+  db.transaction('rw', db.settings, async () => {
+    const s = (await db.settings.get(SETTINGS_KEY))!
+    const today = s.today && { ...s.today, forecast: undefined }
+    await db.settings.update(SETTINGS_KEY, { location: { lat: roundCoord(lat), lon: roundCoord(lon), label }, today })
+  })
 
-// Creates the settings row with defaults on first launch and asks the browser not to
-// evict the app's data under storage pressure.
+// Saves today's outfit and locks. A forecast already saved for the same day is kept, so
+// one arriving while an outfit is being picked isn't lost.
+export const saveToday = (db: ClosetDB, next: Omit<TodayState, 'forecast'>) =>
+  db.transaction('rw', db.settings, async () => {
+    const s = (await db.settings.get(SETTINGS_KEY))!
+    const today: TodayState = s.today?.date === next.date ? { ...s.today, ...next } : next
+    await db.settings.update(SETTINGS_KEY, { today })
+  })
+
+// Keeps today's outfit when the date matches; on a new day `today` is replaced as a whole.
+export const saveForecast = (db: ClosetDB, date: string, forecast: Forecast) =>
+  db.transaction('rw', db.settings, async () => {
+    const s = (await db.settings.get(SETTINGS_KEY))!
+    const today = s.today?.date === date ? { ...s.today, forecast } : { date, itemIds: [], locked: [], forecast }
+    await db.settings.update(SETTINGS_KEY, { today })
+  })
+
+// Creates the settings row with defaults on first launch, inside one transaction so
+// StrictMode's doubled effect can't make a second add() throw (DESIGN §8 step 1).
+// Also asks the browser, on every launch, not to evict the app's data.
 export async function ensureSettings(db: ClosetDB): Promise<Settings> {
-  const existing = await db.settings.get(SETTINGS_KEY)
-  if (existing) return existing
-  const s = defaultSettings()
-  await db.settings.add(s, SETTINGS_KEY)
+  const s = await db.transaction('rw', db.settings, async () => {
+    const existing = await db.settings.get(SETTINGS_KEY)
+    if (existing) return existing
+    const fresh = defaultSettings()
+    await db.settings.add(fresh, SETTINGS_KEY)
+    return fresh
+  })
   await globalThis.navigator?.storage?.persist?.()
   return s
 }

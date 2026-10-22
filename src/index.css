@@ -184,3 +184,46 @@ button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
 .swatches { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 8px; padding: 4px 0; max-width: 420px; }
 .swatch { aspect-ratio: 1; padding: 0; border-radius: 50%; border: 1px solid var(--line); }
 .swatch.on { outline: 3px solid var(--text); outline-offset: 2px; }
+
+.topbar-actions { display: flex; gap: 6px; }
+
+.banner {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--chip-on);
+  color: var(--chip-on-text);
+  font-size: 14px;
+}
+
+button.link { padding: 0; border: 0; background: none; text-decoration: underline; font-size: 14px; }
+.row-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.location .city { margin-bottom: 8px; }
+.location .city .primary { width: 100%; }
+
+.today > * + * { margin-top: 4px; }
+.weather { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; font-size: 15px; }
+
+.outfit { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.outfit-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.outfit-item.locked { border-color: var(--text); }
+.outfit-item .photo { width: 96px; flex-shrink: 0; border-radius: 8px; }
+.outfit-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
+.outfit-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outfit-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.outfit-actions button { padding: 6px 10px; font-size: 13px; }
+.outfit-actions button[aria-pressed='true'] { background: var(--chip-on); color: var(--chip-on-text); border-color: var(--chip-on); }
+
+.notes { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+.outfit-bar { display: flex; gap: 8px; margin-top: 14px; }
+.outfit-bar .primary { flex: 1; }
+
+.settings { display: flex; flex-direction: column; gap: 12px; }
+.badge.icon { font-size: 18px; line-height: 1; padding: 6px 10px; }

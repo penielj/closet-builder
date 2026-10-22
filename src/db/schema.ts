@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable, type Table } from 'dexie'
-import type { Category, ColorMode, Occasion, PaletteColor, Pattern, Season, Warmth } from './values'
+import type { Category, Occasion, PaletteColor, Pattern, Season, Warmth } from './values'
 
 // Field-for-field the DESIGN §7 data model.
 export type ItemId = number // Dexie auto-increment (++id); kept as-is on restore
@@ -21,19 +21,34 @@ export interface Item {
 }
 
 export interface Outfit {
-  key: string // item ids sorted numerically, joined with '|'
+  key: string // base + shoes ids sorted numerically, joined with '|'
   itemIds: ItemId[]
-  rating?: 'like' | 'dislike'
+  rating: 'dislike'
+}
+
+export interface Forecast {
+  high: number // °C, actual (not comfort-adjusted)
+  low: number
+  rainChance: number // 0–100
+}
+
+export interface Location { lat: number; lon: number; label?: string } // stored rounded to 2 decimals
+
+// The outfit on screen today and its locks (DESIGN Flow C, "Today's outfit stays put").
+export interface TodayState {
+  date: string // YYYY-MM-DD, local
+  itemIds: ItemId[] // incl. coat; empty until one is picked
+  locked: ItemId[]
+  forecast?: Forecast
 }
 
 export interface Settings {
   comfortOffset: -3 | 0 | 3
   lastOccasion: Occasion
-  lastColorMode: ColorMode
-  location?: { lat: number; lon: number; label?: string } // stored rounded to 2 decimals
+  location?: Location
   lastBackupAt?: string
-  lastBackupSource?: 'share' | 'download' | 'restore'
   changesSinceBackup: number
+  today?: TodayState // never backed up
 }
 
 export const SETTINGS_KEY = 'settings' // outbound key: the model needs no id field
@@ -41,7 +56,6 @@ export const SETTINGS_KEY = 'settings' // outbound key: the model needs no id fi
 export const defaultSettings = (): Settings => ({
   comfortOffset: 0,
   lastOccasion: 'casual',
-  lastColorMode: 'auto',
   changesSinceBackup: 0,
 })
 
@@ -55,6 +69,14 @@ export class ClosetDB extends Dexie {
     // inHamper isn't indexed: booleans aren't valid IndexedDB keys, and the hamper is
     // filtered in memory, which is fine at this closet size.
     this.version(1).stores({ items: '++id, category, createdAt', outfits: 'key', settings: '' })
+    // v2 drops the v7 color modes, lastBackupSource and liked outfits (DESIGN §8 step 1).
+    this.version(2).stores({}).upgrade(async (tx) => {
+      await tx.table('outfits').filter((o) => o.rating !== 'dislike').delete()
+      await tx.table('settings').toCollection().modify((s) => {
+        delete s.lastColorMode
+        delete s.lastBackupSource
+      })
+    })
   }
 }
 

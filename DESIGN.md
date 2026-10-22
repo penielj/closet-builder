@@ -1,259 +1,162 @@
 # Closet Builder: Design Doc
 
-**Status:** Draft v3 · **Date:** 2026-10-21 · **Author:** Peniel Johnson
+**Status:** v8 (Today specified) · **Date:** 2026-10-21 · **Author:** Peniel Johnson
 
 ## 1. Summary
-Closet Builder is a personal web app, installable on your phone. It suggests a daily outfit using only clothes you own that are **clean and available today**. Each morning it combines the weather for *your* comfort level, the occasion and color rules into a complete outfit. You can shuffle it, lock pieces you want to keep, skip items for today, or reject the whole outfit.
+Closet Builder is a personal web app, installable on your phone. Each morning it suggests an outfit made only from clothes you own that are **clean today**, chosen to suit the weather and the occasion. Everything stays on the device, with no account and no server.
 
-## 2. Problems we are solving
-Ranked by what actually goes wrong in the morning:
-1. **Deciding what goes together.** You have clothes but freeze on combinations.
-2. **Dressing for the weather.** You end up too hot or too cold.
-3. **Knowing what's clean.** The piece you pick turns out to be in the wash.
-
-Not a problem for you, so out of scope: wearing the same few things or forgetting what you own. The picker does **not** avoid recently worn items.
-
-## 3. Goals and non-goals
+## 2. Goals
 **Goals**
-- Give a usable outfit in under 10 seconds, with no decisions required on a normal day.
-- Become useful after cataloging about **20 items**, not the whole closet.
+- An outfit in under 10 seconds, with no decisions needed on a normal day.
+- Useful after cataloging about **20 items**.
 - Never suggest something that's in the hamper.
-- Keep data on the device, and install the app to the home screen so the browser doesn't clear it.
 
-**Non-goals for the MVP**
-- AI or machine-learning outfit generation. The picker is rules-based.
-- Syncing across devices, or user accounts.
-- Notifications or reminders.
-- Showing store products inside the app.
+**Non-goals:** AI outfit generation, accounts or sync, notifications, shopping.
 
-## 4. Core flows
+## 3. Flows
 
-**Flow A: First run (start small)**
-1. A welcome screen says: "Add the ~20 things you actually wear. You can add the rest later."
-2. A progress meter shows what the picker needs: at least 3 tops, 2 bottoms and 1 pair of shoes. A dress can replace a top and bottom.
-3. Today unlocks once the minimum is met. Until then, it shows what's still missing.
+**A. First run.** A welcome screen says "Add the ~20 things you actually wear." A progress meter shows what the picker needs: at least 3 tops, 2 bottoms and 1 pair of shoes, where a dress counts as both a top and a bottom. Today unlocks once that's met. On an iPhone, in Safari rather than the installed app, a banner says: "Add to Home Screen before you start. What you add in Safari stays in Safari."
 
-**Flow B: Add an item**
-1. Take or choose a photo. The app resizes it and pre-selects the detected color.
-2. Fill in the name, category, pattern, occasions, seasons, warmth and an optional brand, then save.
+**B. Add an item.** Take or choose a photo. The app resizes it and pre-selects its color. Fill in the name, category, pattern, occasions, seasons, warmth and an optional brand, then save.
 
-**Flow C: Get today's outfit**
-1. Open Today. The weather loads, showing the high, the low and your comfort-adjusted feel.
-2. The occasion and color mode are remembered from last time, so you only change them when you need to.
-3. The app shows an outfit as a set of item photos.
-4. Choose what to do with it:
-   - **🔒 Lock** an item to keep it while the rest shuffles.
-   - **Not today** on an item excludes it until tomorrow.
-   - **👎** rejects the whole outfit, and that combo never comes back.
-   - **👍** makes the combo more likely to come back.
-   - **Shuffle** gets a new outfit.
+**C. Today.**
+- **Location.** The first time Today opens, the app asks for geolocation. If that's denied or fails, Today shows a city box instead of an outfit. After that the saved location is used every day. The weather line has a **Change** link that asks for geolocation again or takes a new city.
+- **Weather.** The app waits up to 5 seconds for today's forecast, then shows the outfit with or without it (§5, "No weather"). The weather line shows the actual high and low, not the comfort-adjusted ones, plus the chance of rain.
+- **Occasion.** A row of the four occasions, with the one from last time selected. Changing it picks a new outfit, keeping locked items.
+- **The outfit.** The app shows one outfit. On it you can:
+  - **🔒 Lock** an item so it stays when you shuffle.
+  - Mark an item **Not today**, which excludes it until midnight.
+  - Send an item **→ Hamper**.
+  - Tap **👎** to never see this outfit again. A new outfit is picked straight away.
+  - Tap **Shuffle** for a new outfit.
 
-**Flow D: Hamper**
-- **Into the hamper:** on any item, in the closet or on the outfit card, tap **→ Hamper**. Hamper items are never suggested.
-- **Visible:** the Today header shows a badge such as "🧺 7 in hamper". Tapping it opens the list.
-- **Back out:** **Laundry done** returns everything at once. You can also take out single items.
+**Today's outfit stays put.** The picked outfit and its locks are saved for the day, so reopening the app shows the same outfit. A new outfit is picked, keeping locked items, only when:
+- you tap Shuffle or 👎, or change the occasion
+- an item in it goes to the hamper, is marked Not today, or is deleted
+- it's a new day (checked when the app opens or comes back to the front). Locks are cleared then too.
 
-**Flow E: Back up and restore**
-1. Open Settings and tap **Export closet**. The app prepares a single `.closet.json` file and shows its progress ("Preparing… 37/150"). Then tap **Save backup** to open the phone's share sheet, so you can save it to Files, iCloud Drive or Google Drive, or AirDrop it to your laptop. It takes two taps because iPhones only open the share sheet right after a tap, and preparing a large closet takes longer than that.
-2. Settings shows the backup status:
-   - **"Last backup: 12 days ago · 6 items added, 3 other changes since"** after a save through the share sheet.
-   - **"Last export: 12 days ago (download, not confirmed) · …"** when the browser has no share sheet and the file was downloaded instead. The app can't tell whether that file was kept.
-   - **"Last backup: 14 Oct (restored) · …"** right after an import.
+Editing an item doesn't trigger a new pick, even if the item would no longer fit.
 
-   After 7 days *and* at least one change, Today shows a quiet reminder. Adding, editing or deleting an item, rating an outfit and changing the comfort setting count as changes. The hamper, "not today" and the remembered occasion and color mode don't.
-3. To restore, tap **Import closet** and pick a file. The backup **replaces** the closet on the phone. Merging was considered and cut. You'll see a summary before anything is written. If the phone already has items, that summary names any items you'd lose and offers to export the current closet first, ticked by default. That safety copy only counts if it goes through the share sheet. If you cancel it, or it fails, the import is cancelled too. On a browser without a share sheet, the safety copy isn't available, and the confirm button reads "Replace without a safety copy" instead.
+**D. Hamper.** Any item can go **→ Hamper**, and hamper items are never suggested. The top bar shows "🧺 7 in hamper". **Laundry done** returns everything at once.
 
-## 5. MVP features
+**E. Settings.** Opened from a ⚙ button in the top bar. Step 2 builds it with **Comfort** and **Location**. Step 3 adds **Backup**:
+- **Export closet** builds one `.closet.json` file that includes the photos. **Save** then opens the phone's share sheet (or downloads the file on a desktop) so you can keep it in iCloud Drive or Google Drive. It's two taps because iPhones only open the share sheet straight after a tap.
+- **Import closet** picks a file. If the closet isn't empty, the app asks "Replace your 42 items with the 38 in this backup?", then replaces everything.
+- Settings shows "Last backup: 12 days ago · 9 changes since".
 
-### 5.1 Closet
-| Feature | Details |
+## 4. Features
+| Area | Feature |
 |---|---|
-| Item catalog | Add, edit and delete items. Shown as a photo grid that can be filtered by category. Hamper items are dimmed. |
-| Photos | Taken with the camera or uploaded, then resized to about 800px JPEG on the device. |
-| Auto color | Samples the center 50% of the photo, finds the dominant color and snaps it to the nearest palette color. You can override it. |
-| Tags | Category, color, pattern, occasions, seasons, warmth (light/medium/heavy) and an optional brand. The allowed values are fixed in §6.8. The brand field autocompletes so spellings stay consistent. |
-| Hamper | Mark items dirty by hand. **Laundry done** clears all of them at once. |
-| Backup | Export everything to one file and import it again, with a reminder when a backup is overdue (Flow E). |
+| Closet | A photo grid filtered by category. Add, edit and delete items. Hamper items are dimmed. |
+| Photos | Taken with the camera or uploaded, then resized on the device to about 800px JPEG. That also removes EXIF data, including location. |
+| Auto color | Samples the center 50% of the photo and snaps the dominant color to the nearest palette color. You can override it. |
+| Brand | Autocompletes from existing items, so spellings stay consistent. |
+| Weather | Open-Meteo forecast (free, no key): `daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max`, `timezone=auto`, `forecast_days=1`, in °C. The location comes from browser geolocation, or from a typed city looked up with Open-Meteo's geocoding API (first result). |
+| Comfort | "I run cold / neutral / warm" sets the comfort offset to +3, 0 or −3. Rule 4 subtracts it, so running cold makes every temperature feel 3°C colder. |
 
-### 5.2 Today
-| Feature | Details |
-|---|---|
-| Weather | Today's **high and low** from browser geolocation and Open-Meteo (free, no API key). If location isn't available, you can type a city or a temperature. |
-| Comfort setting | An **"I run cold / neutral / warm"** setting shifts every temperature threshold by +3°C, 0 or −3°C. |
-| Occasion | Casual, work, formal or workout. The last choice is remembered. |
-| Color mode | **Auto** (the default), Monochrome, Tonal or Complementary. Kept in a compact selector and remembered between visits. |
-| Lock | Locked items are always included. Only the unlocked slots shuffle. |
-| Not today | Excludes an item until midnight. |
-| Like / dislike | Liked combos are three times as likely to be picked. Disliked combos are never picked again. |
-| Explain failures | Says what to change, e.g. "Nothing clean fits a 6°C work day. 3 tops are in the hamper." |
+## 5. Outfit rules
+1. **Available:** not in the hamper, and `skipDate` isn't today's local date.
+2. **Occasion:** the item is tagged with today's occasion.
+3. **Season:** the item has no season tags, or one of them is the current season. Seasons go by month: March–May spring, June–August summer, September–November autumn, December–February winter. South of the equator (latitude below 0) they're swapped. With no saved location this rule is skipped.
+4. **Warmth:**
+   - **Feels like** = the temperature − comfort offset. If you run cold, 12°C feels like 9°C.
+   - The feels-like high sets a target warmth: below 10°C heavy (3), 10–20°C medium (2), above 20°C light (1). Exactly 10°C and exactly 20°C are both medium.
+   - Tops, bottoms, dresses and shoes pass when they're within ±1 of the target. On a 1–3 scale that only drops heavy items on hot days and light items on cold days, and nothing on medium days. That's intended.
+5. **Slots:** top + bottom, or a dress, then shoes, plus a coat when rule 9 calls for one.
+6. **Colors:** any number of neutrals, and at most **one** statement color, which can appear on more than one item. The coat isn't counted.
+7. **Pattern:** at most one patterned item (anything that isn't `solid`). The coat isn't counted.
+8. **Pick:**
+   - Build every valid base + shoes combo, which is fast at closet size.
+   - Drop the disliked ones.
+   - Drop the outfit on screen now, unless it's the only one left. In that case show it again with the note "This is the only outfit that fits."
+   - Pick one at random.
+   - Locked items are always included, even when they break rules 2–4. They still count toward rules 6 and 7. Putting a locked item in the hamper, marking it Not today or deleting it unlocks it.
+9. **Coat:** added after the base and shoes are picked, when the feels-like low is below 15°C or the chance of rain is 50% or more.
+   - It's chosen from outerwear that passes rules 1–3. Rule 4's ±1 doesn't apply.
+   - When the feels-like low is below 5°C, pick at random among the coats with the highest warmth. Otherwise pick any of them at random.
+   - If there's no such coat, the outfit is shown without one, with the note "No clean coat."
+   - A locked coat is always shown, even when the weather doesn't call for one.
+10. **Nothing fits:** try once more without rule 4. If that fails too, show a message:
+    - If no top or dress passes rules 1–3, say "No clean {occasion} tops." Do the same for bottoms (when there are no dresses either) and for shoes. Use the first one that applies, in that order.
+    - Otherwise say "Your clean {occasion} clothes don't go together. Try Laundry done, or unlock an item."
+11. **No weather:** if the forecast doesn't arrive (offline, no location yet, or the request fails), rule 4 and the coat are skipped, and the weather line says "No weather, so warmth isn't checked." A forecast already fetched today is reused without a new request.
 
-## 6. Outfit rules
+An outfit's identity (its `key`) is its top, bottom or dress plus its shoes, **not** the coat. That way a disliked outfit doesn't come back just because the coat changed. 👎 saves only those IDs.
 
-### 6.1 Availability
-Items in the hamper or marked "not today" are always excluded. Locked items are always included.
-
-### 6.2 Weather: dress for the high, layer for the low
-The comfort offset adjusts each threshold. A "runs cold" person treats 12°C like 9°C.
-
-- **Base outfit:** chosen to suit the day's **high**.
-
-  | Feels-like high | Target warmth |
-  |---|---|
-  | below 10°C | 3 (heavy) |
-  | 10–20°C | 2 (medium) |
-  | above 20°C | 1 (light) |
-
-  Items within ±1 of the target pass.
-- **Outerwear:** added when the day's **low** is below 15°C or rain is forecast. The coat's warmth follows the low.
-
-### 6.3 Other filters
-- **Occasion:** keep items tagged with the chosen occasion.
-- **Season:** worked out from the month and hemisphere. Items with no season tags count for every season.
-
-### 6.4 Slots
-- **Base:** top + bottom, *or* a dress.
-- **Shoes:** always included.
-- **Outerwear:** only when the weather rule in 6.2 calls for it.
-
-### 6.5 Validity
-A combo is valid when its colors pass the selected color mode, it has at most one patterned item, and it hasn't been disliked.
-
-### 6.6 Selection and relaxing the rules
-The picker samples random combos, keeps the valid ones, weights liked combos ×3, avoids the outfit shown just before, and picks one.
-
-**If nothing is valid,** it relaxes one rule at a time, in this order, and labels the result with what it relaxed:
-1. Allow warmth within ±2 instead of ±1.
-2. Drop the season filter.
-3. Fall back from the selected color mode to Auto.
-4. Allow two patterned items.
-
-The picker **never** relaxes the occasion, the hamper or "not today." If it still finds nothing, it explains which category ran out and why.
-
-### 6.7 Color palette
-There are 18 named colors.
-- **Neutrals:** black, white, grey, navy, denim, beige and brown.
-- **Statement colors:** red, burgundy, pink, orange, yellow, olive, green, teal, blue, light blue and purple.
-
-Each color has a hue value so the color modes can be calculated. Auto mode uses a short list of non-neutral pairs that work together.
-
-### 6.8 Tag values
-These lists are fixed, because every backup file stores them. Renaming or removing a value later needs a backup migration (§7). Adding a value doesn't.
-
+## 6. Fixed values
 | Tag | Values |
 |---|---|
 | Category | `top`, `bottom`, `dress`, `shoes`, `outerwear` |
 | Pattern | `solid`, `striped`, `checked`, `print` |
-| Occasion | `casual`, `work`, `formal`, `workout` |
-| Season | `spring`, `summer`, `autumn`, `winter` |
+| Occasion | `casual`, `work`, `formal`, `workout`. Every item needs at least one. |
+| Season | `spring`, `summer`, `autumn`, `winter`. Empty means every season. |
 | Warmth | `1` light, `2` medium, `3` heavy |
-| Color | the 18 palette names in §6.7, in lowercase with hyphens (`light-blue`) |
+| Color | 18 names, below |
 
-- **Category** maps one-to-one onto the slots in §6.4. Jumpsuits and overalls count as `dress`, because they fill the whole base slot. Sweaters, cardigans and hoodies count as `top`. Jackets and coats worn over everything count as `outerwear`.
-- **Pattern:** the validity rule (§6.5) only asks whether an item is solid, so every value except `solid` counts as patterned. The other three exist so that the closet can be filtered and the tag reads naturally. `print` covers florals, graphics and everything else.
-- **Occasion:** every item needs at least one, or the picker could never choose it.
-- **Season:** may be empty, which means every season (§6.3).
+- **Neutrals:** black, white, grey, navy, denim, beige and brown.
+- **Statement colors:** red, burgundy, pink, orange, yellow, olive, green, teal, blue, light-blue and purple.
+
+Jumpsuits count as `dress`, sweaters and hoodies as `top`, and jackets and coats as `outerwear`. Backup files store these strings, so renaming or removing one needs a backup `version` bump.
 
 ## 7. Technical design
-| Area | Choice | Why |
-|---|---|---|
-| App | Vite + React + TypeScript, **installable app (PWA)** | Installing to the home screen keeps Safari from clearing the data and makes it feel like a real app |
-| Storage | IndexedDB, through Dexie. Asks for persistent storage (`navigator.storage.persist()`) on first launch | Can hold photo files, and data stays on the device. Persistent storage asks the browser not to clear the data when space runs low |
-| Validation | zod | Backup files are untrusted input. Schemas check every record and drop unknown fields |
-| Weather | Open-Meteo daily high and low, rain probability, and geocoding | Free, no API key |
-| Styling | Plain CSS variables, light and dark themes, mobile-first | A clean, minimal catalog look |
-| Tests | Vitest, with fake-indexeddb for database tests | Unit tests for the rules and the backup round trip |
-| Hosting | GitHub Pages at `https://<user>.github.io/closet-builder/`. Vite `base`, the manifest's `start_url` and `scope`, and the service worker scope are all `/closet-builder/` | Free static HTTPS, deployed from the repo by one Action. A wrong base path breaks installing to the home screen. With a custom domain later, all of these become `/` |
+| Area | Choice |
+|---|---|
+| App | Vite + React + TypeScript, installable to the home screen (PWA) |
+| Storage | IndexedDB through Dexie, with photos stored as Blobs. Asks for `navigator.storage.persist()` on launch. |
+| Writes | All writes go through `src/db/repo.ts`. Real changes (add, edit or delete an item, a dislike, comfort) bump `changesSinceBackup` in the same transaction. Temporary state (hamper, Not today, occasion, location, `today`) doesn't. |
+| Picker | A pure function in `src/closet/picker.ts`: items, settings, forecast, locks, the current outfit, dislikes and a `random()` go in; an outfit (or a "nothing fits" message) and its notes come out. No database or React inside, so rule tests are plain unit tests. |
+| Validation | zod, for import files |
+| Offline | A service worker caches the built app. Weather needs a connection (§5, rule 11). |
+| Hosting | GitHub Pages at `/closet-builder/`, deployed by one Action. Vite `base` and the manifest's `start_url` and `scope` must all match. |
+| Tests | Vitest, with fake-indexeddb |
 
 **Data model**
 ```ts
-Item     { id: number /* auto-increment; kept as-is on restore */, name, category, color, pattern,
-           occasions[], seasons[], warmth: 1|2|3, brand?, photo?: Blob, inHamper: boolean,
-           skipDate?: 'YYYY-MM-DD', createdAt /* ISO */ }
-Outfit   { key /* item ids sorted numerically, joined with '|' */, itemIds[], rating?: 'like'|'dislike' }
-Settings { comfortOffset: -3|0|3, lastOccasion, lastColorMode,
-           location? /* lat/lon rounded to 2 decimals, about 1km */,
-           lastBackupAt?, lastBackupSource?: 'share'|'download'|'restore', changesSinceBackup: number }
+Item     { id /* auto-increment */, name, category, color, pattern, occasions[], seasons[],
+           warmth: 1|2|3, brand?, photo?: Blob, inHamper, skipDate?: 'YYYY-MM-DD', createdAt }
+Outfit   { key /* base + shoes ids, sorted numerically, joined with '|' */, itemIds[], rating: 'dislike' }
+Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } /* rounded to ~1km */,
+           lastBackupAt?, changesSinceBackup,
+           today?: { date: 'YYYY-MM-DD', itemIds[] /* incl. coat */, locked[],
+                     forecast?: { high, low, rainChance } } }
 ```
-- **First launch:** comfort offset `0`, occasion `casual`, color mode `auto`, no location, `changesSinceBackup` `0`.
-- **Outfit keys sort numerically**, because the default sort puts `10` before `9` and would give one outfit two keys.
-- **`lastBackupSource`** decides which status line Flow E shows.
-- **All writes go through one module (`repo.ts`).** It counts changes for the backup reminder in the same transaction as the write itself.
+- Sort the IDs numerically: the default sort puts `10` before `9`.
+- `today` is replaced as a whole when the date changes. It's left out of backups, and an import clears it.
+- Dates are the device's local date, never UTC.
 
-**Backup file format**
+**Backup file**
 ```json
-{ "app": "closet-builder", "version": 1, "appVersion": "0.1.0",
-  "exportedAt": "2026-10-21T08:00:00.000Z",
-  "counts": { "items": 42, "outfits": 17 },
-  "settings": { "comfortOffset": 0, "lastOccasion": "work", "lastColorMode": "auto", "location": {...} },
-  "items": [{ "id": 17, "...item fields": "", "photo": "data:image/jpeg;base64,... or null" }],
-  "outfits": [{ "itemIds": [3, 17, 42], "rating": "like" }] }
+{ "app": "closet-builder", "version": 1, "exportedAt": "2026-10-21T08:00:00.000Z",
+  "settings": { ... }, "items": [{ "id": 17, ..., "photo": "data:image/jpeg;base64,..." }],
+  "outfits": [{ "itemIds": [3, 17], "rating": "dislike" }] }
 ```
-- **One JSON file, with photos embedded as base64.** It's simple, readable, and needs no zip library. At roughly 100KB per photo, 20 items come to about 3MB and 150 items to about 20MB, which is fine.
-- **Version field.** Imports check `version` and convert older files. A file from a newer version is rejected with a clear message rather than imported halfway.
-- **`appVersion` and `counts`.** `appVersion` is for bug reports. `counts` catches a file that was cut off but still happens to be valid JSON.
-- **Left out of the file:** backup status (`lastBackupAt`, `lastBackupSource`, `changesSinceBackup`), and outfit `key`, which is recomputed from `itemIds` on import.
-- **All or nothing.** Imports run inside one database transaction. A broken or truncated file changes nothing. Restored items keep their original IDs, so ratings still point at the right items.
-- **Size limits.** Import refuses files over 100MB before reading them. Export warns above 40MB, which is about 300 items. Both limits are provisional until the device test (BACKUP-IMPLEMENTATION.md, step 12d).
-- **Saving the file.** On phones, the app uses the share sheet (`navigator.share` with a file) where available, and a normal download everywhere else. A download is shown as "not confirmed" (Flow E). The safety copy before a destructive import never falls back to a download.
+- **Photos embedded as base64:** about 100KB each, so 150 items come to about 15MB.
+- **Checks before writing:** the `app` and `version` fields first, then every record against the zod schemas. A broken file, or one from a newer version, changes nothing and shows a clear message.
+- **All or nothing:** the import runs in one transaction. It clears the closet, writes the backup with its original IDs so dislikes still point at the right items, clears `today`, sets `lastBackupAt` and resets the change count.
+- **Saving:** `navigator.share` with a file where that works, otherwise a download. The installed iPhone app never falls back to a download, because one can fail there without saying so.
 
-**Build order**
-0. Spikes: test that photo files can be stored in the test environment, and that the share sheet works on an installed iPhone app (pass criteria in BACKUP-IMPLEMENTATION.md, step 0).
-1. Skeleton: database schema, `repo.ts`, first-launch settings, add and edit item with photo resizing, the closet grid and the hamper. Deploy to GitHub Pages and install the app on a phone.
-2. Backup and restore (Flow E), following BACKUP-IMPLEMENTATION.md. It comes before the picker so that the closet you catalog while testing is protected.
-3. Today: weather, the outfit picker and its rules (§6), lock, "not today", likes and dislikes.
+## 8. Build order
+1. **Skeleton (done):** the database, `repo.ts`, the item form with photos, the closet grid, the hamper and the Pages deploy. Follow-ups, also done:
+   - Create the settings row inside one transaction. React StrictMode runs the effect twice, which can make the second `add()` throw.
+   - Wait for the settings row before rendering. `update()` on a missing row does nothing and reports no error, so an early occasion or location write would be lost.
+   - **Code cleanup from v7:** remove the color modes (`COLOR_MODES`, `lastColorMode`), `lastBackupSource` and the `'like'` rating.
+   - Add the service worker and the iPhone install banner.
+2. **Today (done):** location and weather, the picker (§5), the saved daily outfit, lock, Not today, 👎, and Settings with Comfort and Location.
+3. **Backup:** export, import and the status line (Flow E). **Blocked** until spike 0.2 (iOS share sheet) passes, see `spikes/RESULTS.md`.
 
-## 8. Future roadmap (after the MVP)
-| Area | Feature |
-|---|---|
-| Data safety | Automatic cloud backup (e.g. to Google Drive); sync across devices |
-| Laundry | Automatic dirty tracking: each item gets a wears-before-wash count, and "Wearing this" marks items dirty |
-| Weather | Shoes flagged "not for rain"; picking weather from only the hours you're out |
-| Planning | Saved outfits (lookbook), an outfit calendar with selfies, a packing list, event planning |
-| Insights | Closet stats; a capsule wardrobe builder; shopping gaps with brand links |
-| Closet | Care-label scan; multiple closets; an accessories layer |
-| Feedback | Item-pair dislikes, if rejecting whole combos turns out to be too slow to teach the app |
-| Platform | Optional AI auto-fill from a photo, using your own API key |
+## 9. Later, if it's missed
+Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules · replacing only the slot that changed instead of re-picking.
 
-**Ideas considered and rejected**
-- **Barcode or tag scanning:** there's no free public database that maps a barcode to clothing details, and most clothes no longer have their hang tags.
-- **Product listings inside the app:** would need approval from shopping affiliate programs and a server.
-- **Morning reminders:** a local-only app can't send scheduled notifications.
-
-## 9. Risks and open questions
-- **A backup only helps if you make it.** Export is manual. If you lose your phone and your last export was two months ago, you lose two months of changes. The overdue reminder (Flow E) is the only safeguard. If you ignore it, automatic cloud backup (§8) is the real fix.
-- **Backups saved on the same phone.** If the file goes into the phone's local storage instead of iCloud or Google Drive, it disappears along with the phone. The export screen should recommend a cloud location.
-- **Backups contain your photos.** The file holds every closet photo. Anyone you send it to sees them all.
-- **A forgotten hamper.** Because the hamper is manual, the app only knows what's dirty if you tell it. If you forget **Laundry done**, items stay out of rotation and suggestions get thin. The hamper badge and the failure message ("3 tops are in the hamper") are the only safeguards. If this happens often, move automatic dirty tracking (§8) into the app.
-- **Four color modes vs. "can't decide."** Every extra choice works against the main problem. They're kept but tucked away. Watch whether you ever change the mode, and if you don't, remove the other three.
-- **Disliking whole combos learns slowly.** A clash between two items will keep coming back with different shoes. "Not today" covers some of this. Watch for it.
-- **Small closets.** About 20 items, after occasion, weather and hamper filtering, may leave very few candidates. The relaxation order in §6.6 is meant to soften this, so check how often relaxed results come up.
-- **Auto-color accuracy:** busy backgrounds or patterned items can mislead it. The user can always correct the color.
-
-## 10. How we'll know it works
-**Tests**
-- Unit tests cover:
-  - the high and low weather rules and the comfort offset
-  - hamper and "not today" exclusion
-  - season filtering and each color mode
-  - nearest-color matching and locked slots
-  - like and dislike behavior
-  - the dress vs top+bottom choice
-  - the relaxation order and failure messages
-  - backup: export → import gives back identical data, including photos; a truncated or wrong-version file changes nothing; importing onto a non-empty phone warns before replacing; the safety copy counts only after a share-sheet save, and cancelling it cancels the import
-  - tag values: values outside §6.8 are rejected, and an item with no occasion is rejected
-- **Manual test:**
-  1. Install the app on a phone.
-  2. Catalog about 20 items.
-  3. Generate outfits on a cold day and a warm day, with each comfort setting.
-  4. Put items in the hamper and confirm they never appear. Then use Laundry done.
-  5. Use "Not today", lock an item and shuffle.
-  6. Reload and confirm that the data persisted.
-  7. Export to iCloud or Drive.
-  8. Delete the app, reinstall it and import the file.
-  9. Check that the closet, photos, ratings and settings all came back.
-
-**After a month of real use**
-- Do you wear the suggested outfit (or one shuffle away from it) on most mornings?
-- How often does "nothing fits" or a relaxed result show up?
-- Do you ever change the color mode?
-- How often is the hamper badge above about 10?
+## 10. Testing
+- **Unit tests for the picker:**
+  - the warmth targets at exactly 10°C and 20°C, and the comfort offset
+  - when a coat is added, picking the warmest below 5°C, and the "No clean coat" note
+  - hamper and Not today exclusion, season filtering and both hemispheres, and no location skipping the season rule
+  - the one-statement-color and one-pattern rules, with the coat not counted
+  - locks breaking rules 2–4 but not 6–7, a locked coat, and dislikes
+  - the current outfit being dropped, and shown again when it's the only one
+  - the retry without warmth, and each "nothing fits" message
+  - no forecast: warmth and coat skipped
+- **Today's outfit:** reopening the same day keeps it, a new day re-picks and clears locks, and sending a shown item to the hamper re-picks while keeping locks.
+- **Backup round trip:** export → import gives back identical items, photos and dislikes, and `today` is cleared. A truncated or wrong-version file changes nothing.
+- **Manual:** install on a phone, catalog 20 items, check a cold day and a warm day, deny geolocation and type a city, open it offline, use the hamper, then delete the app, reinstall and import a backup.
