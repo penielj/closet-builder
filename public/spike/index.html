@@ -1,0 +1,128 @@
+<!doctype html>
+<!-- Spike 0.2 (BACKUP-IMPLEMENTATION.md step 0): does the two-tap share flow work
+     from the installed iPhone app with a ~20MB backup-sized file? Throwaway page. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="../icons/icon-192.png">
+  <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <title>Share spike</title>
+  <style>
+    body { font: 16px/1.4 -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; max-width: 560px; }
+    button { font: inherit; width: 100%; padding: 14px; margin: 6px 0; border-radius: 10px; border: 1px solid #999; background: #f4f4f4; }
+    button:disabled { opacity: .4; }
+    #status { padding: 10px; border-radius: 8px; background: #eef; margin: 10px 0; }
+    #log { font: 13px/1.4 ui-monospace, monospace; white-space: pre-wrap; background: #111; color: #ddd; padding: 10px; border-radius: 8px; min-height: 120px; }
+    label { display: block; margin: 8px 0; }
+    .pass { color: #0a7a2f; font-weight: 600; } .fail { color: #b00020; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Share spike</h1>
+  <div id="env"></div>
+  <label>Items: <input id="count" type="number" value="150" min="1" max="600" style="width:6em"> (~133KB base64 each, so 150 ≈ 20MB)</label>
+  <button id="prepare">1. Prepare file</button>
+  <div id="status">Not prepared.</div>
+  <button id="save" disabled>2. Save backup (share sheet)</button>
+  <button id="oneTap">Control: prepare + share on ONE tap (expected to fail on iOS)</button>
+  <button id="copy">Copy log</button>
+  <div id="log"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = (msg) => { $('log').textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`; };
+
+const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+$('env').innerHTML =
+  `Installed app: <span class="${standalone ? 'pass' : 'fail'}">${standalone ? 'yes' : 'NO, add to home screen first'}</span><br>` +
+  `navigator.share: ${'share' in navigator} · canShare: ${'canShare' in navigator}<br>` +
+  `<small>${navigator.userAgent}</small>`;
+log(`standalone=${standalone} share=${'share' in navigator} canShare=${'canShare' in navigator}`);
+
+// Same encoding as the plan's blobToDataUrl (step 4), so timing reflects the real export.
+async function blobToDataUrl(b) {
+  const bytes = new Uint8Array(await b.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:${b.type};base64,${btoa(bin)}`;
+}
+function fakePhoto(n = 100_000) {
+  const bytes = new Uint8Array(n);
+  for (let i = 0; i < n; i += 65536) crypto.getRandomValues(bytes.subarray(i, Math.min(i + 65536, n)));
+  bytes.set([0xff, 0xd8, 0xff], 0);
+  return new Blob([bytes], { type: 'image/jpeg' });
+}
+
+// Mirrors buildExport (step 6): BlobParts, one photo encoded at a time.
+async function buildFile(count, onProgress) {
+  const photos = Array.from({ length: count }, () => fakePhoto()); // the "snapshot"
+  const parts = ['{"app":"closet-builder","version":1,"counts":{"items":' + count + ',"outfits":0},"items":['];
+  for (let i = 0; i < count; i++) {
+    const rec = { id: i + 1, name: `Item ${i + 1}`, photo: await blobToDataUrl(photos[i]) };
+    parts.push(i ? ',' : '', JSON.stringify(rec));
+    onProgress(i + 1, count);
+  }
+  parts.push('],"outfits":[]}');
+  const date = new Date().toISOString().slice(0, 10);
+  return new File(parts, `closet-${date}.closet.json`, { type: 'application/json' });
+}
+
+async function share(file) {
+  if (!navigator.canShare?.({ files: [file] })) return 'unavailable (canShare false)';
+  try { await navigator.share({ files: [file], title: 'Closet backup' }); return 'shared'; }
+  catch (e) { return `error: ${e?.name} — ${e?.message}`; }
+}
+
+let prepared = null;
+$('prepare').onclick = async () => {
+  $('prepare').disabled = $('save').disabled = true;
+  prepared = null;
+  const count = +$('count').value;
+  const t0 = performance.now();
+  try {
+    const file = await buildFile(count, (d, n) => { $('status').textContent = `Preparing… ${d}/${n}`; });
+    const secs = (performance.now() - t0) / 1000;
+    prepared = file;
+    const mb = (file.size / 1048576).toFixed(1);
+    const ok = secs < 15;
+    $('status').innerHTML = `Ready: ${file.name}, ${mb}MB in <span class="${ok ? 'pass' : 'fail'}">${secs.toFixed(1)}s</span> (pass < 15s)`;
+    log(`prepared ${count} items, ${file.size} bytes (${mb}MB), ${secs.toFixed(2)}s`);
+    $('save').disabled = false;
+  } catch (e) {
+    $('status').innerHTML = `<span class="fail">Prepare failed: ${e?.name} ${e?.message}</span>`;
+    log(`prepare FAILED: ${e?.name} ${e?.message}`);
+  }
+  $('prepare').disabled = false;
+};
+
+// Second tap: share immediately, nothing awaited before navigator.share.
+$('save').onclick = async () => {
+  const result = await share(prepared);
+  log(`two-tap share → ${result}`);
+};
+
+$('oneTap').onclick = async () => {
+  $('oneTap').disabled = true;
+  const file = await buildFile(+$('count').value, (d, n) => { $('status').textContent = `One-tap control: preparing… ${d}/${n}`; });
+  $('status').textContent = 'One-tap control: calling share after the wait…';
+  log(`one-tap share → ${await share(file)}`);
+  $('oneTap').disabled = false;
+};
+
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('log').textContent); log('log copied'); }
+  catch { log('copy failed: select the log text by hand'); }
+};
+
+// If the page reloads mid-prepare (iOS memory kill), this counter makes it visible.
+try {
+  const n = +(sessionStorage.getItem('loads') || 0) + 1;
+  sessionStorage.setItem('loads', n);
+  if (n > 1) log(`NOTE: page has loaded ${n} times this session; a reload during prepare means a crash`);
+} catch {}
+</script>
+</body>
+</html>
