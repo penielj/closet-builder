@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { Forecast, Item } from '../db/schema'
-import { NO_COAT, ONLY_OUTFIT, type PickInput, coatWanted, feelsLike, pickOutfit, seasonOf, targetWarmth } from './picker'
+import { type Forecast, type Item, outfitKey } from '../db/schema'
+import {
+  NO_COAT, ONLY_OUTFIT, type PickInput, type SwipeInput, coatWanted, feelsLike, pickOutfit, seasonOf, swipeItem, targetWarmth,
+} from './picker'
 
 const DATE = '2026-10-22' // October: autumn in the north, spring in the south
 const LONDON = { lat: 51.51, lon: -0.13 }
@@ -307,5 +309,77 @@ describe('no weather (rule 11)', () => {
     const r = pick({ items: [heavy, light, item('shoes'), coat], forecast: undefined })
     expect(r.ok && r.itemIds).toEqual([heavy.id, light.id, r.ok && r.itemIds[2]])
     expect(r.ok && r.notes).toEqual([])
+  })
+})
+
+describe('swipe (rule 12)', () => {
+  const added = (n: number) => `2026-10-0${n}T00:00:00.000Z`
+  const swipe = (over: Partial<SwipeInput> & { items: Item[]; outfit: number[] }, id: number, step: 1 | -1 = 1) =>
+    swipeItem({
+      settings: { comfortOffset: 0, lastOccasion: 'casual', location: LONDON },
+      forecast: MILD, date: DATE, locked: [], dislikes: new Set(), ...over,
+    }, id, step)
+
+  it('steps through the slot in the order items were added, both ways, wrapping around', () => {
+    const t3 = item('top', { createdAt: added(3) })
+    const t1 = item('top', { createdAt: added(1) })
+    const t2 = item('top', { createdAt: added(2) })
+    const bottom = item('bottom'), shoes = item('shoes')
+    const items = [t3, t1, t2, bottom, shoes]
+    const outfit = [t1.id, bottom.id, shoes.id]
+    expect(swipe({ items, outfit }, t1.id, 1)).toEqual({ ok: true, itemIds: [t2.id, bottom.id, shoes.id] })
+    expect(swipe({ items, outfit }, t1.id, -1)).toEqual({ ok: true, itemIds: [t3.id, bottom.id, shoes.id] })
+    expect(swipe({ items, outfit: [t3.id, bottom.id, shoes.id] }, t3.id, 1)).toEqual({ ok: true, itemIds: [t1.id, bottom.id, shoes.id] })
+  })
+
+  it('skips items that break rules 1–4', () => {
+    const top = item('top', { createdAt: added(1) })
+    const bottom = item('bottom'), shoes = item('shoes')
+    const items = [
+      top, bottom, shoes,
+      item('top', { createdAt: added(2), inHamper: true }),
+      item('top', { createdAt: added(3), skipDate: DATE }),
+      item('top', { createdAt: added(4), occasions: ['work'] }),
+      item('top', { createdAt: added(5), seasons: ['summer'] }),
+    ]
+    const hot = item('top', { createdAt: added(6), warmth: 3 })
+    const r = swipe({ items: [...items, hot], outfit: [top.id, bottom.id, shoes.id], forecast: { high: 28, low: 20, rainChance: 0 } }, top.id)
+    expect(r).toEqual({ ok: false, message: 'No other top fits.' })
+    // Without a forecast, warmth isn't checked.
+    expect(swipe({ items: [...items, hot], outfit: [top.id, bottom.id, shoes.id], forecast: undefined }, top.id))
+      .toEqual({ ok: true, itemIds: [hot.id, bottom.id, shoes.id] })
+  })
+
+  it('keeps rules 6 and 7 with the rest of the outfit and skips disliked outfits', () => {
+    const top = item('top', { createdAt: added(1) })
+    const bottom = item('bottom', { color: 'red', pattern: 'print' }), shoes = item('shoes')
+    const blueTop = item('top', { createdAt: added(2), color: 'blue' }) // a second statement color
+    const stripedTop = item('top', { createdAt: added(3), pattern: 'striped' }) // a second pattern
+    const disliked = item('top', { createdAt: added(4) })
+    const ok = item('top', { createdAt: added(5), color: 'red' }) // the same statement color is fine
+    const items = [top, bottom, shoes, blueTop, stripedTop, disliked, ok]
+    const dislikes = new Set([outfitKey([disliked.id, bottom.id, shoes.id])])
+    expect(swipe({ items, outfit: [top.id, bottom.id, shoes.id], dislikes }, top.id))
+      .toEqual({ ok: true, itemIds: [ok.id, bottom.id, shoes.id] })
+  })
+
+  it("doesn't swipe a locked item", () => {
+    const [t1, t2, bottom, shoes] = [item('top'), item('top'), item('bottom'), item('shoes')]
+    const outfit = [t1.id, bottom.id, shoes.id]
+    expect(swipe({ items: [t1, t2, bottom, shoes], outfit, locked: [t1.id] }, t1.id)).toEqual({ ok: true, itemIds: outfit })
+  })
+
+  it('swipes a coat among coats that pass rules 1–3, ignoring warmth, colors and patterns', () => {
+    const top = item('top', { color: 'red' }), bottom = item('bottom'), shoes = item('shoes')
+    const coat = item('outerwear', { createdAt: added(1) })
+    const loud = item('outerwear', { createdAt: added(2), color: 'green', pattern: 'checked', warmth: 1 })
+    const r = swipe({ items: [top, bottom, shoes, coat, loud], outfit: [top.id, bottom.id, shoes.id, coat.id], forecast: { high: 2, low: 0, rainChance: 0 } }, coat.id)
+    expect(r).toEqual({ ok: true, itemIds: [top.id, bottom.id, shoes.id, loud.id] })
+  })
+
+  it('says when nothing else fits', () => {
+    const [top, bottom, shoes] = [item('top'), item('bottom'), item('shoes')]
+    expect(swipe({ items: [top, bottom, shoes], outfit: [top.id, bottom.id, shoes.id] }, shoes.id))
+      .toEqual({ ok: false, message: 'No other pair of shoes fits.' })
   })
 })

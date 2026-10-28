@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useMemo, useState } from 'react'
+import { type PointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { localDate, planToday } from '../closet/daily'
-import { NO_COAT, ONLY_OUTFIT, coatWanted, fitsDayFor, isBase, pickOutfit } from '../closet/picker'
+import { NO_COAT, ONLY_OUTFIT, coatWanted, fitsDayFor, isBase, pickOutfit, swipeItem } from '../closet/picker'
 import { MINIMUM, closetReadiness } from '../closet/readiness'
 import LocationPicker from '../components/LocationPicker'
 import { StoredPhoto } from '../components/Photo'
@@ -91,6 +91,7 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
   const weatherDone = !!forecast || weatherDoneFor === weatherKey
   const [message, setMessage] = useState<string>()
   const [onlyOne, setOnlyOne] = useState(false)
+  const [swipeNote, setSwipeNote] = useState<string>()
   const [changingPlace, setChangingPlace] = useState(false)
 
   // Weather: a forecast already fetched today is reused. Otherwise wait up to 5 seconds,
@@ -120,6 +121,7 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
     })
     setMessage(result.ok ? undefined : result.message)
     setOnlyOne(result.ok && result.notes.includes(ONLY_OUTFIT))
+    setSwipeNote(undefined)
     const itemIds = result.ok ? result.itemIds : []
     // Skip a write that changes nothing, or the live query would loop on "nothing fits".
     if (today?.date === state.date && sameIds(today.itemIds, itemIds) && sameIds(today.locked, state.locked)) return
@@ -148,6 +150,15 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
     date, itemIds: plan.state.itemIds,
     locked: locked.has(id) ? plan.state.locked.filter((l) => l !== id) : [...plan.state.locked, id],
   })
+
+  // Rule 12: replaces only the swiped item and keeps the locks.
+  function swipe(id: ItemId, step: 1 | -1) {
+    const { itemIds, locked } = plan.state
+    const result = swipeItem({ items, settings, forecast, date, outfit: itemIds, locked, dislikes: dislikeKeys }, id, step)
+    setSwipeNote(result.ok ? undefined : result.message)
+    setOnlyOne(false)
+    if (result.ok && !sameIds(result.itemIds, itemIds)) return saveToday(db, { date, itemIds: result.itemIds, locked })
+  }
 
   async function dislike() {
     const ids = baseIds(plan.state.itemIds)
@@ -192,27 +203,21 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
         <>
           <ul className="outfit">
             {shown.map((item) => (
-              <li key={item.id} className={`outfit-item ${locked.has(item.id) ? 'locked' : ''}`}>
-                <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
-                <div className="outfit-body">
-                  <span className="outfit-name">{item.name}</span>
-                  <div className="outfit-actions">
-                    <button aria-pressed={locked.has(item.id)} onClick={() => toggleLock(item.id)}>
-                      {locked.has(item.id) ? '🔒 Locked' : '🔓 Lock'}
-                    </button>
-                    <button onClick={() => skipToday(db, item.id, date)}>Not today</button>
-                    <button onClick={() => setInHamper(db, item.id, true)}>→ Hamper</button>
-                  </div>
-                </div>
-              </li>
+              <OutfitItem key={item.id} item={item} locked={locked.has(item.id)} onSwipe={(step) => swipe(item.id, step)}>
+                <button aria-pressed={locked.has(item.id)} onClick={() => toggleLock(item.id)}>
+                  {locked.has(item.id) ? '🔒 Locked' : '🔓 Lock'}
+                </button>
+                <button onClick={() => skipToday(db, item.id, date)}>Not today</button>
+                <button onClick={() => setInHamper(db, item.id, true)}>→ Hamper</button>
+              </OutfitItem>
             ))}
           </ul>
-          {(onlyOne || noCoat) && (
-            <ul className="notes">
-              {onlyOne && <li>{ONLY_OUTFIT}</li>}
-              {noCoat && <li>{NO_COAT}</li>}
-            </ul>
-          )}
+          <ul className="notes">
+            {onlyOne && <li>{ONLY_OUTFIT}</li>}
+            {noCoat && <li>{NO_COAT}</li>}
+            {swipeNote && <li>{swipeNote}</li>}
+            {!onlyOne && !noCoat && !swipeNote && <li className="hint">Swipe an item to change just that one.</li>}
+          </ul>
           <div className="outfit-bar">
             <button onClick={dislike} aria-label="Never show this outfit again">👎</button>
             <button className="primary" onClick={() => repick(plan.state)}>Shuffle</button>
@@ -224,6 +229,44 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
         <p className="muted empty">Picking an outfit…</p>
       )}
     </section>
+  )
+}
+
+const SWIPE_PX = 50
+
+// One item of the outfit. A horizontal swipe of 50px or more changes it: left for the
+// next choice, right for the previous one (DESIGN §5 rule 12). `touch-action: pan-y` in
+// the CSS leaves vertical scrolling to the browser. A locked item doesn't swipe.
+function OutfitItem({ item, locked, onSwipe, children }: {
+  item: Item; locked: boolean; onSwipe: (step: 1 | -1) => void; children: ReactNode
+}) {
+  const start = useRef<{ x: number; y: number }>(undefined)
+  const swipedAt = useRef(-Infinity)
+
+  const onPointerUp = (e: PointerEvent) => {
+    if (!start.current) return
+    const dx = e.clientX - start.current.x, dy = e.clientY - start.current.y
+    start.current = undefined
+    if (locked || Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    swipedAt.current = e.timeStamp
+    onSwipe(dx < 0 ? 1 : -1)
+  }
+
+  return (
+    <li
+      className={`outfit-item ${locked ? 'locked' : ''}`}
+      onPointerDown={(e) => { start.current = { x: e.clientX, y: e.clientY } }}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => { start.current = undefined }}
+      // A swipe that started on a button mustn't also press it.
+      onClickCapture={(e) => { if (e.timeStamp - swipedAt.current < 500) { e.preventDefault(); e.stopPropagation() } }}
+    >
+      <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
+      <div className="outfit-body">
+        <span className="outfit-name">{item.name}</span>
+        <div className="outfit-actions">{children}</div>
+      </div>
+    </li>
   )
 }
 
