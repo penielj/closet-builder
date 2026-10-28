@@ -133,6 +133,7 @@ Jumpsuits count as `dress`; sweaters, cardigans and hoodies as `sweater` (before
 | Picker | A pure function in `src/closet/picker.ts`: items, settings, forecast, locks, the current outfit, dislikes and a `random()` go in; an outfit (or a "nothing fits" message) and its notes come out. No database or React inside, so rule tests are plain unit tests. |
 | Validation | zod, for import files |
 | Offline | A service worker caches the built app. Weather needs a connection (§5, rule 11). |
+| Startup failures | Never a blank screen. A crash while drawing shows the error with **Try again** and **Refresh app files** (an ErrorBoundary; a database that won't open goes there too). A file that fails to load, or no screen 8 seconds in, shows the same from a small script in `index.html`. **Refresh app files** unregisters the service worker and deletes the `closet-` caches; the database is never touched. |
 | Hosting | GitHub Pages at `/closet-builder/`, deployed by one Action. Vite `base` and the manifest's `start_url` and `scope` must all match. |
 | Tests | Vitest, with fake-indexeddb |
 

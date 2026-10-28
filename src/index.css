@@ -311,3 +311,8 @@ button.link { padding: 0; border: 0; background: none; text-decoration: underlin
   .look-track { scroll-behavior: auto; }
   .meter-fill { transition: none; }
 }
+
+/* What a crash shows instead of a blank screen (components/ErrorBoundary.tsx). */
+.crash { max-width: 520px; margin: 0 auto; padding: calc(48px + env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 48px max(20px, env(safe-area-inset-left)); }
+.crash-title { font: italic 26px/1.2 var(--serif); margin: 0 0 8px; }
+.crash-detail { white-space: pre-wrap; font: 11px/1.5 var(--type); color: var(--muted); margin: 16px 0 20px; overflow-wrap: anywhere; }

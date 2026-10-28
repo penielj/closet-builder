@@ -24,7 +24,10 @@ export default function App() {
 
   const [failure, setFailure] = useState<string>()
 
-  useEffect(() => { ensureSettings(db).then(() => setSettingsReady(true)) }, [])
+  // A database that won't open is shown by the ErrorBoundary instead of a blank screen.
+  const [startError, setStartError] = useState<Error>()
+  useEffect(() => { ensureSettings(db).then(() => setSettingsReady(true), setStartError) }, [])
+  if (startError) throw startError
 
   // A write a button started and nothing caught (hamper, laundry, lock…) shows here
   // instead of failing silently (DESIGN §7 "Writes").
