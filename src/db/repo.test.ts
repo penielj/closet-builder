@@ -3,7 +3,7 @@ import Dexie from 'dexie'
 import { ClosetDB, SETTINGS_KEY } from './schema'
 import {
   type NewItem, addItem, clearDislikes, deleteItem, forgetDislike, dislikeOutfit, ensureSettings, laundryDone, saveForecast, saveToday,
-  setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, updateItem, wearOutfit, wearToday,
+  setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, undoWear, updateItem, wearOutfit, wearToday,
 } from './repo'
 
 let db: ClosetDB
@@ -269,5 +269,23 @@ describe('wear tracking (rule 16)', () => {
     await setInHamper(db, a, false)
     await laundryDone(db)
     expect((await db.items.toArray()).map((i) => [i.inHamper, i.wears])).toEqual([[false, 0], [false, 0]])
+  })
+})
+
+describe('taking Wore this back (rule 16)', () => {
+  it('Undo restores wears, last worn and the hamper exactly, and frees the outfit', async () => {
+    const tee = await addItem(db, shirt)
+    const jeans = await addItem(db, { ...shirt, name: 'Jeans', category: 'bottom' })
+    await wearOutfit(db, [jeans], '2026-10-27')
+    const before = await db.items.toArray()
+    await saveToday(db, { date: '2026-10-28', itemIds: [tee, jeans], locked: [] })
+    await wearOutfit(db, [tee, jeans], '2026-10-28')
+    expect((await db.items.get(tee))!.inHamper).toBe(true)
+
+    await undoWear(db, '2026-10-28')
+    expect(await db.items.toArray()).toEqual(before)
+    const today = (await db.settings.get(SETTINGS_KEY))!.today!
+    expect(today.worn).toBe(false)
+    expect(today.wornBefore).toBeUndefined()
   })
 })

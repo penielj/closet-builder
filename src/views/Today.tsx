@@ -10,7 +10,7 @@ import LocationPicker from '../components/LocationPicker'
 import { StoredPhoto } from '../components/Photo'
 import { db } from '../db'
 import {
-  clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday, wearOutfit, wearToday,
+  clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday, undoWear, wearOutfit, wearToday,
 } from '../db/repo'
 import { type Item, type ItemId, SETTINGS_KEY, type Settings, type TodayState, outfitKey } from '../db/schema'
 import { type Category, OCCASIONS, type Occasion, label } from '../db/values'
@@ -122,7 +122,8 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   const baseIds = (ids: ItemId[]) => ids.filter((id) => { const i = byId.get(id); return !i || isBase(i) })
   const currentKey = today && today.date === date && today.itemIds.length ? outfitKey(baseIds(today.itemIds)) : undefined
 
-  function repick(state: TodayState, opts: { occasion?: Occasion; disliked?: string } = {}) {
+  // `unworn`: "New outfit" after "Wore this", so the outfit is freed in the same write.
+  function repick(state: TodayState, opts: { occasion?: Occasion; disliked?: string; unworn?: boolean } = {}) {
     const dislikedNow = opts.disliked ? new Set([...dislikeKeys, opts.disliked]) : dislikeKeys
     const result = pickOutfit({
       items,
@@ -133,8 +134,8 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
     setPickNotes(result.ok ? result.notes.filter((n) => n !== NO_COAT) : [])
     const itemIds = result.ok ? result.itemIds : []
     // Skip a write that changes nothing, or the live query would loop on "nothing fits".
-    if (today?.date === state.date && sameIds(today.itemIds, itemIds) && sameIds(today.locked, state.locked)) return
-    return saveToday(db, { date: state.date, itemIds, locked: state.locked })
+    if (!opts.unworn && today?.date === state.date && sameIds(today.itemIds, itemIds) && sameIds(today.locked, state.locked)) return
+    return saveToday(db, { date: state.date, itemIds, locked: state.locked, ...(opts.unworn && { worn: false, wornBefore: undefined }) })
   }
 
   // What rule 12's carousels and rule 15's refills choose against: today's outfit as it stands.
@@ -295,10 +296,17 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
           </ul>
           {worn
             ? (
-              <p className="worn" role="status">
-                Worn today.{' '}
-                {hampered === 0 ? 'Nothing needs washing yet.' : `${hampered} ${hampered === 1 ? 'piece went' : 'pieces went'} to the hamper.`}
-              </p>
+              <>
+                <p className="worn" role="status">
+                  Worn today.{' '}
+                  {hampered === 0 ? 'Nothing needs washing yet.' : `${hampered} ${hampered === 1 ? 'piece went' : 'pieces went'} to the hamper.`}
+                </p>
+                {/* Undo takes the wear back; New outfit keeps it and picks again (rule 16). */}
+                <div className="outfit-bar">
+                  <button onClick={() => undoWear(db, date)}>Undo</button>
+                  <button className="primary" onClick={() => repick(plan.state, { unworn: true })}>New outfit</button>
+                </div>
+              </>
             )
             : (
               <>

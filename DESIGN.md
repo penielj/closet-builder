@@ -32,7 +32,7 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
   - **Remove** a layer (sweater, jacket, hat or bag) for the day, or tap **+ Sweater**, **+ Jacket**, **+ Hat** or **+ Bag** under the outfit to put one on. Each shows only when one of those fits and isn't in the outfit (rule 15).
   - Tap **Not for me** (a 👎) to never see this outfit again. A new outfit is picked straight away.
   - Tap **Shuffle** for a new outfit.
-  - Tap **Wore this** once you've worn it (rule 16). Each piece counts a wear, pieces at their limit go to the hamper, and the outfit stays as it is for the rest of the day: no swiping, locks or layer changes, and the list says "To the hamper" or the wear count instead of the links. A line reads "Worn today. 1 piece went to the hamper."
+  - Tap **Wore this** once you've worn it (rule 16). Each piece counts a wear, pieces at their limit go to the hamper, and the outfit stays as it is for the rest of the day: no swiping, locks or layer changes, and the list says "To the hamper" or the wear count instead of the links. A line reads "Worn today. 1 piece went to the hamper." Under it, **Undo** takes the wear back exactly (wears, last worn date and hamper state as they were before, saved in `today.wornBefore`) and frees the outfit; **New outfit** keeps the wears and picks a fresh outfit in the same write.
 
 **Today's outfit stays put.** The picked outfit and its locks are saved for the day, so reopening the app shows the same outfit. A new outfit is picked, keeping locked items, only when:
 - you tap Shuffle or 👎, or change the occasion (a swipe changes only the swiped item)
@@ -147,7 +147,8 @@ Outfit   { key /* base + shoes ids, sorted numerically, joined with '|' */, item
 Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } /* rounded to ~1km */,
            lastBackupAt?, changesSinceBackup,
            today?: { date: 'YYYY-MM-DD', itemIds[] /* incl. coat */, locked[],
-                     forecast?: { high, low, rainChance }, worn?: boolean } }
+                     forecast?: { high, low, rainChance }, worn?: boolean,
+                     wornBefore?: { id, wears?, lastWorn?, inHamper }[] } }
 ```
 - **Why photos have their own table:** an update rewrites the whole record. When the photo lived on the item, Laundry done re-saved every photo in the hamper, and on the iPhone the items stayed in the hamper until the app was closed and reopened, then showed no photos until it was reopened again (phone test 1). Now hamper, Not today and item edits that keep the photo never touch the `photos` table. Deleting an item deletes its photo in the same transaction. Database version 3 moves existing photos over.
 - Sort the IDs numerically: the default sort puts `10` before `9`.

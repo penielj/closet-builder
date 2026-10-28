@@ -52,6 +52,8 @@ export interface TodayState {
   locked: ItemId[]
   forecast?: Forecast
   worn?: boolean // "Wore this" was tapped: the outfit stays as it is for the rest of the day
+  // What "Wore this" changed, so Undo can put it back exactly (rule 16).
+  wornBefore?: { id: ItemId; wears?: number; lastWorn?: string; inHamper: boolean }[]
 }
 
 export interface Settings {

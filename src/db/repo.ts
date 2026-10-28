@@ -78,9 +78,11 @@ export const laundryDone = (db: ClosetDB) =>
 export const wearOutfit = (db: ClosetDB, ids: ItemId[], date: string) =>
   db.transaction('rw', [db.items, db.settings], async () => {
     const hampered: ItemId[] = []
+    const wornBefore: NonNullable<TodayState['wornBefore']> = []
     for (const id of ids) {
       const item = await db.items.get(id)
       if (!item) continue
+      wornBefore.push({ id, wears: item.wears, lastWorn: item.lastWorn, inHamper: item.inHamper })
       const wears = (item.wears ?? 0) + 1
       const limit = washAfter(item)
       const full = limit !== NEVER && wears >= limit
@@ -88,8 +90,18 @@ export const wearOutfit = (db: ClosetDB, ids: ItemId[], date: string) =>
       if (full) hampered.push(id)
     }
     const s = (await db.settings.get(SETTINGS_KEY))!
-    if (s.today?.date === date) await db.settings.update(SETTINGS_KEY, { today: { ...s.today, worn: true } })
+    if (s.today?.date === date) await db.settings.update(SETTINGS_KEY, { today: { ...s.today, worn: true, wornBefore } })
     return hampered
+  })
+
+// Takes "Wore this" back: each piece's wears, last worn date and hamper state as they were,
+// and the outfit can change again.
+export const undoWear = (db: ClosetDB, date: string) =>
+  db.transaction('rw', [db.items, db.settings], async () => {
+    const s = (await db.settings.get(SETTINGS_KEY))!
+    if (s.today?.date !== date) return
+    for (const { id, ...before } of s.today.wornBefore ?? []) await db.items.update(id, before) // undefined fields are removed
+    await db.settings.update(SETTINGS_KEY, { today: { ...s.today, worn: false, wornBefore: undefined } })
   })
 
 export const skipToday = (db: ClosetDB, id: ItemId, today: string) =>
