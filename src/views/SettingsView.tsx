@@ -5,7 +5,7 @@ import { backupStatus, saveFile } from '../backup/save'
 import { localDate } from '../closet/daily'
 import LocationPicker from '../components/LocationPicker'
 import { db } from '../db'
-import { importBackup, markBackedUp, readSnapshot, setComfortOffset, updateItem } from '../db/repo'
+import { forgetDislike, importBackup, markBackedUp, readSnapshot, setComfortOffset, updateItem } from '../db/repo'
 import type { Settings } from '../db/schema'
 import { cutout } from '../photo/cutout'
 import { loadImage, processPhoto } from '../photo/resize'
@@ -53,8 +53,34 @@ export default function SettingsView({ settings, itemCount }: { settings: Settin
       </div>
 
       <Cutouts />
+      <Dislikes />
       <Backup settings={settings} itemCount={itemCount} />
     </section>
+  )
+}
+
+// Every 👎, so one can be taken back without forgetting them all (rule 10's button does that).
+function Dislikes() {
+  const outfits = useLiveQuery(() => db.outfits.toArray(), [])
+  const items = useLiveQuery(() => db.items.toArray(), [])
+  if (!outfits || !items) return null
+  const name = new Map(items.map((i) => [i.id, i.name]))
+  return (
+    <div className="panel">
+      <h2>Disliked outfits</h2>
+      {outfits.length === 0
+        ? <p className="muted">None. Tap 👎 on Today to never see an outfit again.</p>
+        : (
+          <ul className="list">
+            {outfits.map((o) => (
+              <li key={o.key} className="row">
+                <span className="row-name">{o.itemIds.map((id) => name.get(id) ?? 'Deleted item').join(' + ')}</span>
+                <button onClick={() => forgetDislike(db, o.key)}>Forget</button>
+              </li>
+            ))}
+          </ul>
+        )}
+    </div>
   )
 }
 

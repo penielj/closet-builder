@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import Dexie from 'dexie'
 import { ClosetDB, SETTINGS_KEY } from './schema'
 import {
-  type NewItem, addItem, clearDislikes, deleteItem, dislikeOutfit, ensureSettings, laundryDone, saveForecast, saveToday,
+  type NewItem, addItem, clearDislikes, deleteItem, forgetDislike, dislikeOutfit, ensureSettings, laundryDone, saveForecast, saveToday,
   setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, updateItem, wearToday,
 } from './repo'
 
@@ -232,5 +232,16 @@ describe('v3 migration (DESIGN §8 step 4, hamper bug)', () => {
     expect(photo.type).toBe('image/jpeg')
     expect(new Uint8Array(await photo.arrayBuffer())).toEqual(bytes)
     expect(await v3.photos.get(without.id)).toBeUndefined()
+  })
+})
+
+describe('forgetting one 👎', () => {
+  it('removes just that outfit and counts as a change', async () => {
+    await dislikeOutfit(db, [1, 2])
+    await dislikeOutfit(db, [3, 4])
+    const before = await changes()
+    await forgetDislike(db, '1|2')
+    expect((await db.outfits.toArray()).map((o) => o.key)).toEqual(['3|4'])
+    expect(await changes()).toBe(before + 1)
   })
 })

@@ -28,12 +28,13 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
   - **Lock** a piece with the lock icon in its photo's top-right corner, so it stays when you shuffle. A locked piece doesn't swipe.
   - Mark a piece **Not today**, which excludes it until midnight. In the Closet tab it's dimmed with a **Wear today** button that undoes it.
   - Send a piece to the **Hamper**.
+  - **Remove** a layer (sweater, jacket, hat or bag) for the day, or tap a dashed **+ Sweater**, **+ Jacket**, **+ Hat** or **+ Bag** square to put one on. A square shows only when one of those fits and isn't in the outfit (rule 15).
   - Tap **👎** to never see this outfit again. A new outfit is picked straight away.
   - Tap **Shuffle** for a new outfit.
 
 **Today's outfit stays put.** The picked outfit and its locks are saved for the day, so reopening the app shows the same outfit. A new outfit is picked, keeping locked items, only when:
 - you tap Shuffle or 👎, or change the occasion (a swipe changes only the swiped item)
-- an item in it goes to the hamper, is marked Not today, or is deleted
+- an item in it goes to the hamper, is marked Not today, or is deleted: then only that piece's slot is refilled (rule 15), unless the base can't be completed
 - it's a new day (checked when the app opens or comes back to the front). Locks are cleared then too.
 
 Editing an item doesn't trigger a new pick, even if the item would no longer fit.
@@ -44,6 +45,7 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 - **Export closet** builds one `.closet.json` file that includes the photos. **Save** then opens the phone's share sheet (or downloads the file on a desktop) so you can keep it in iCloud Drive or Google Drive. It's two taps because iPhones only open the share sheet straight after a tap.
 - **Import closet** picks a file. If the closet isn't empty, the app asks "Replace your 42 items with the 38 in this backup?", then replaces everything.
 - Settings shows "Last backup: 12 days ago · 9 changes since".
+- **Disliked outfits** lists every 👎 by its pieces' names, each with **Forget**, which counts as a real change.
 
 ## 4. Features
 | Area | Feature |
@@ -79,7 +81,7 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 9. **Coat:** added after the base and shoes are picked, when the feels-like low is below 15°C or the chance of rain is 50% or more.
    - It's chosen from outerwear that passes rules 1–3. Rule 4's ±1 doesn't apply.
    - When the feels-like low is below 5°C, pick at random among the coats with the highest warmth. Otherwise pick any of them at random.
-   - If there's no such coat, the outfit is shown without one, with the note "No clean coat."
+   - If there's no such coat, the outfit is shown without one, with the note "No clean coat." The note only shows to someone who owns a coat.
    - A locked coat is always shown, even when the weather doesn't call for one.
 10. **Nothing fits:** try once more without rule 4. If that fails too, show a message:
     - If no top or dress passes rules 1–3, say "No {occasion} tops for today." Do the same for bottoms (when there are no dresses either) and for shoes. Use the first one that applies, in that order.
@@ -98,6 +100,7 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
     - The new outfit is saved for the day like any other pick. Swiping isn't a real change, so it doesn't count toward the backup reminder.
 13. **Sweater:** added after the base when the feels-like high is below 18°C (with the comfort offset; no forecast, no sweater). It's chosen at random from sweaters that pass rules 1–3 and keep rules 6 and 7 with the base. Rule 4 doesn't apply. If none goes with the base, the note says "No clean sweater goes with this," but only when there are any sweaters at all. A locked sweater is always shown.
 14. **Hat and bag:** picked last, at random from those that pass rules 1–3, whenever there is one; without one nothing is added and nothing is said. A locked one is always shown. They're accessories, so rules 6 and 7 don't count them.
+15. **Only the slot that changed:** when pieces leave today's outfit (hamper, Not today, deleted), the rest stays and only their slots are refilled. A base slot takes a piece that fits with the rest (rules 1–4, 6 and 7 with the sweater on, and the 👎s); a layer is replaced by another of its kind that fits, or left out. If the base can't be completed, or nothing of it is left, a new outfit is picked. Adding a layer by hand picks at random from the same choices.
 
 An outfit's identity (its `key`) is its top, bottom or dress plus its shoes, **not** the coat. That way a disliked outfit doesn't come back just because the coat changed. 👎 saves only those IDs.
 

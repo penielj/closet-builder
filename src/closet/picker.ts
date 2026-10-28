@@ -145,16 +145,56 @@ const SINGULAR: Record<Item['category'], string> = {
 // Rule 12's choices for the slot `itemId` is in, in the order they were added, `itemId`
 // included: what Today's carousel for that slot shows. Empty if `itemId` isn't an item.
 export function slotChoices(input: SwipeInput, itemId: ItemId): Item[] {
-  const { items, settings, forecast, date, outfit } = input
-  const byId = new Map(items.map((i) => [i.id, i]))
-  const swiped = byId.get(itemId)
+  const swiped = input.items.find((i) => i.id === itemId)
   if (!swiped) return []
+  const fits = fitsWith(input, outfitItems(input).filter((i) => i.id !== itemId))
+  return byAdded(input.items.filter((c) => c.category === swiped.category && (c.id === itemId || fits(c))))
+}
 
+// Rule 15: what an empty `category` slot can take, given the rest of the outfit, in the
+// order they were added. Used to refill a slot whose piece left and to add a layer by hand.
+export function slotFill(input: SwipeInput, category: Category): Item[] {
+  const fits = fitsWith(input, outfitItems(input))
+  return byAdded(input.items.filter((c) => c.category === category && fits(c)))
+}
+
+// Rule 15: when pieces leave today's outfit (hamper, Not today, deleted), only their slots
+// are refilled, keeping the rest. A base slot takes another piece that fits; a layer is
+// replaced by another of its kind if one fits, or left out. `input.outfit` is what's left.
+// Undefined when the base can't be completed, or nothing of it is left: then pick anew.
+export function refillOutfit(input: SwipeInput & { random: () => number }, gone: Item[]): ItemId[] | undefined {
+  const ids = [...input.outfit]
+  const byId = new Map(input.items.map((i) => [i.id, i]))
+  const has = (c: Category) => ids.some((id) => byId.get(id)?.category === c)
+  const fill = (c: Category) => {
+    const choices = slotFill({ ...input, outfit: ids }, c)
+    if (choices.length) ids.push(choices[Math.floor(input.random() * choices.length)].id)
+    return choices.length > 0
+  }
+  if (!has('dress')) {
+    if (!has('top') && !has('bottom')) return undefined
+    if (!has('top') && !fill('top')) return undefined
+    if (!has('bottom') && !fill('bottom')) return undefined
+  }
+  if (!has('shoes') && !fill('shoes')) return undefined
+  for (const g of gone) if (!isBase(g) && !has(g.category)) fill(g.category)
+  return ids
+}
+
+const byAdded = (items: Item[]) => items.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
+
+function outfitItems(input: SwipeInput): Item[] {
+  const byId = new Map(input.items.map((i) => [i.id, i]))
+  return input.outfit.map((id) => byId.get(id)).filter((i): i is Item => !!i)
+}
+
+// Whether `c` can join `rest` in its slot (rule 12): rules 1–3, then for the base and the
+// sweater rules 6 and 7 with the rest, and for the base rule 4 and the 👎s too.
+function fitsWith(input: SwipeInput, rest: Item[]): (c: Item) => boolean {
+  const { settings, forecast, date } = input
   const fitsDay = fitsDayFor(settings, date)
   const target = forecast && targetWarmth(feelsLike(forecast.high, settings.comfortOffset))
-  const rest = outfit.filter((id) => id !== itemId).map((id) => byId.get(id)).filter((i): i is Item => !!i)
-
-  const fits = (c: Item) => {
+  return (c) => {
     if (!fitsDay(c)) return false
     if (!counted(c)) return true // a coat, hat or bag: rules 1–3 only, as in rules 9 and 14
     if (!goesTogether([...rest.filter(counted), c])) return false
@@ -162,9 +202,6 @@ export function slotChoices(input: SwipeInput, itemId: ItemId): Item[] {
     if (target !== undefined && Math.abs(c.warmth - target) > 1) return false
     return !input.dislikes.has(outfitKey([...rest.filter(isBase), c].map((i) => i.id)))
   }
-  return items
-    .filter((c) => c.category === swiped.category && (c.id === itemId || fits(c)))
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
 }
 
 // Rules 5–7: every top + bottom (or dress) + shoes, with locked items forced into their slot.

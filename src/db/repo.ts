@@ -53,6 +53,10 @@ export const dislikeOutfit = (db: ClosetDB, ids: ItemId[]) =>
     await db.outfits.put({ key: outfitKey(ids), itemIds: sortIds(ids), rating: 'dislike' })
   })
 
+// Takes back one 👎, from Settings.
+export const forgetDislike = (db: ClosetDB, key: string) =>
+  tracked(db, [db.outfits], async () => { await db.outfits.delete(key) })
+
 // The way out when every outfit left has a 👎 (DESIGN §5 rule 10).
 export const clearDislikes = (db: ClosetDB) =>
   tracked(db, [db.outfits], async () => { await db.outfits.clear() })

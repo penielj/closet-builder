@@ -250,6 +250,14 @@ button.link { padding: 0; border: 0; background: none; text-decoration: underlin
 .look-slide { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; aspect-ratio: 1; }
 .look-slide .photo { width: 100%; height: 100%; padding: 10%; }
 .look-slide .placeholder-dot { width: 36%; }
+.look-add button {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+.look-add button:hover, .look-add button:focus-visible { border-color: var(--muted); color: var(--text); }
 .look-lock {
   position: absolute;
   top: 0;

@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { localDate, planToday } from '../closet/daily'
 import {
-  NO_COAT, type NothingFits, coatWanted, fitsDayFor, isBase, pickOutfit, slotChoices, whyNotFor,
+  NO_COAT, type NothingFits, coatWanted, fitsDayFor, isBase, pickOutfit, refillOutfit, slotChoices, slotFill, whyNotFor,
 } from '../closet/picker'
 import { MINIMUM, closetReadiness } from '../closet/readiness'
 import LocationPicker from '../components/LocationPicker'
@@ -12,7 +12,7 @@ import {
   clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday, wearToday,
 } from '../db/repo'
 import { type Item, type ItemId, type Settings, type TodayState, outfitKey } from '../db/schema'
-import { CATEGORIES, OCCASIONS, type Occasion, label } from '../db/values'
+import { CATEGORIES, type Category, OCCASIONS, type Occasion, label } from '../db/values'
 import { currentPosition, fetchForecast } from '../weather/openMeteo'
 
 const WEATHER_WAIT_MS = 5000 // DESIGN Flow C, "Weather"
@@ -132,13 +132,26 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
     return saveToday(db, { date: state.date, itemIds, locked: state.locked })
   }
 
-  // Picks when there's no outfit yet today, or one in it went to the hamper, was marked
-  // Not today or was deleted (including from the Closet tab).
+  // What rule 12's carousels and rule 15's refills choose against: today's outfit as it stands.
+  const swipeInput = { items, settings, forecast, date, outfit: plan.state.itemIds, locked: plan.state.locked, dislikes: dislikeKeys }
+
+  // Picks when there's no outfit yet today. When pieces of it went to the hamper, were
+  // marked Not today or were deleted (including from the Closet tab), only their slots are
+  // refilled (rule 15), unless the base can't be completed.
   // The pick is random and saved to the database, so it can't be derived during render.
   // `repick` is left out of the deps: it changes every render, and `plan` covers its inputs.
   /* oxlint-disable react/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!plan.repick || !dislikes || !weatherDone) return
+    if (plan.state.itemIds.length > 0) {
+      const gone = (today?.itemIds ?? []).filter((id) => !plan.state.itemIds.includes(id)).map((id) => byId.get(id)).filter((i): i is Item => !!i)
+      const itemIds = refillOutfit({ ...swipeInput, random: Math.random }, gone)
+      if (itemIds) {
+        setPickNotes([])
+        saveToday(db, { date, itemIds, locked: plan.state.locked })
+        return
+      }
+    }
     repick(plan.state)
   }, [plan, dislikes, weatherDone])
   /* oxlint-enable react/set-state-in-effect, react-hooks/exhaustive-deps */
@@ -147,11 +160,12 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   const shown = plan.repick ? [] : plan.state.itemIds.map((id) => byId.get(id)!).filter(Boolean)
     .sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category))
   const locked = new Set(plan.state.locked)
-  const hasCoat = shown.some((i) => !isBase(i))
+  const isCoat = (i: Item) => i.category === 'outerwear'
   const fitsDay = fitsDayFor(settings, date)
   const whyNot = whyNotFor(settings, date)
-  const noCoat = shown.length > 0 && forecast && coatWanted(forecast, settings.comfortOffset) && !hasCoat
-    && !items.some((i) => !isBase(i) && fitsDay(i))
+  // "No clean coat" only for someone who owns a coat (rule 9), like the sweater note.
+  const noCoat = shown.length > 0 && forecast && coatWanted(forecast, settings.comfortOffset) && !shown.some(isCoat)
+    && items.some(isCoat) && !items.some((i) => isCoat(i) && fitsDay(i))
 
   const toggleLock = (id: ItemId) => saveToday(db, {
     date, itemIds: plan.state.itemIds,
@@ -159,7 +173,15 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   })
 
   // Rule 12: the carousel settled on another item for that slot. Only it changes; locks stay.
-  const swipeInput = { items, settings, forecast, date, outfit: plan.state.itemIds, locked: plan.state.locked, dislikes: dislikeKeys }
+  // Layers can be taken off for the day or put on by hand (rule 15).
+  const removeLayer = (id: ItemId) =>
+    saveToday(db, { date, itemIds: plan.state.itemIds.filter((i) => i !== id), locked: plan.state.locked.filter((i) => i !== id) })
+  const addable = LAYERS.filter((c) => !shown.some((i) => i.category === c) && slotFill(swipeInput, c).length > 0)
+  function addLayer(category: Category) {
+    const choices = slotFill(swipeInput, category)
+    if (choices.length) saveToday(db, { date, itemIds: [...plan.state.itemIds, pickOne(choices).id], locked: plan.state.locked })
+  }
+
   function choose(from: ItemId, to: ItemId) {
     setPickNotes([])
     const { itemIds, locked } = plan.state
@@ -218,6 +240,11 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
                 onToggleLock={() => toggleLock(item.id)}
               />
             ))}
+            {addable.map((c) => (
+              <li key={c} className="look look-add">
+                <button onClick={() => addLayer(c)}>+ {LAYER_NAMES[c]}</button>
+              </li>
+            ))}
           </ul>
           {/* The flat lay has no text, so the pieces are named here. */}
           <ul className="pieces">
@@ -228,6 +255,7 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
                   <span className="look-name">{item.name}</span>
                 </span>
                 <span className="look-actions">
+                  {!isBase(item) && <button className="link" onClick={() => removeLayer(item.id)}>Remove</button>}
                   <button className="link" onClick={() => skipToday(db, item.id, date)}>Not today</button>
                   <button className="link" onClick={() => setInHamper(db, item.id, true)}>Hamper</button>
                 </span>
@@ -286,6 +314,11 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
     </section>
   )
 }
+
+const LAYERS = ['sweater', 'outerwear', 'hat', 'bag'] as const
+const LAYER_NAMES: Record<(typeof LAYERS)[number], string> = { sweater: 'Sweater', outerwear: 'Jacket', hat: 'Hat', bag: 'Bag' }
+
+const pickOne = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)]
 
 const SETTLE_MS = 120 // a carousel counts as settled this long after its last scroll event
 

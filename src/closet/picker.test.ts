@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Forecast, type Item, outfitKey } from '../db/schema'
 import {
-  NO_COAT, NO_SWEATER, ONLY_OUTFIT, type PickInput, type SwipeInput, coatWanted, feelsLike, pickOutfit, seasonOf, slotChoices, targetWarmth,
+  NO_COAT, NO_SWEATER, ONLY_OUTFIT, type PickInput, type SwipeInput, coatWanted, feelsLike, pickOutfit, seasonOf, refillOutfit, slotChoices, slotFill, targetWarmth,
   whyNotFor,
 } from './picker'
 
@@ -501,5 +501,47 @@ describe('slot choices for layers (rule 12)', () => {
     const other = item('top', { color: 'red', createdAt: '2026-10-03T00:00:00.000Z' })
     const tops = slotChoices({ ...input, items: [...input.items, other], outfit: [top.id, bottom.id, shoes.id, green.id] }, top.id)
     expect(tops.map((i) => i.id)).toEqual([top.id])
+  })
+})
+
+describe('refilling only the slot that changed (rule 15)', () => {
+  const input = (items: Item[], outfit: number[], over: Partial<SwipeInput> = {}) => ({
+    items, settings: { comfortOffset: 0 as const, lastOccasion: 'casual' as const, location: LONDON },
+    forecast: MILD, date: DATE, locked: [], dislikes: new Set<string>(), outfit, random: () => 0, ...over,
+  })
+
+  it('replaces a base piece that left with another that fits, keeping the rest', () => {
+    const [t1, b1, s1] = [item('top'), item('bottom'), item('shoes')]
+    const t2 = item('top', { color: 'red' })
+    const hampered = { ...t1, inHamper: true }
+    expect(refillOutfit(input([hampered, t2, b1, s1], [b1.id, s1.id]), [hampered])).toEqual([b1.id, s1.id, t2.id])
+  })
+
+  it("picks anew when the slot can't be filled, or nothing of the base is left", () => {
+    const [b1, s1] = [item('bottom'), item('shoes')]
+    expect(refillOutfit(input([b1, s1, item('top', { inHamper: true })], [b1.id, s1.id]), [])).toBeUndefined()
+    expect(refillOutfit(input([item('top'), b1, s1], [s1.id]), [])).toBeUndefined()
+  })
+
+  it('replaces a layer with another of its kind if one fits, and otherwise leaves it out', () => {
+    const [t, b, s] = [item('top'), item('bottom'), item('shoes')]
+    const hat1 = item('hat', { skipDate: DATE }), hat2 = item('hat')
+    expect(refillOutfit(input([t, b, s, hat1, hat2], [t.id, b.id, s.id]), [hat1])).toEqual([t.id, b.id, s.id, hat2.id])
+    expect(refillOutfit(input([t, b, s, hat1], [t.id, b.id, s.id]), [hat1])).toEqual([t.id, b.id, s.id])
+  })
+
+  it('a refilled base piece goes with the sweater still on, and skips 👎 outfits', () => {
+    const [b, s] = [item('bottom'), item('shoes')]
+    const green = item('sweater', { color: 'green' })
+    const red = item('top', { color: 'red' }), disliked = item('top'), ok = item('top', { color: 'green' })
+    const dislikes = new Set([outfitKey([disliked.id, b.id, s.id])])
+    expect(refillOutfit(input([red, disliked, ok, b, s, green], [b.id, s.id, green.id], { dislikes }), []))
+      .toEqual([b.id, s.id, green.id, ok.id])
+  })
+
+  it('slotFill lists what an empty layer slot can take, for adding one by hand', () => {
+    const [t, b, s] = [item('top', { color: 'red' }), item('bottom'), item('shoes')]
+    const navy = item('sweater', { color: 'navy' }), green = item('sweater', { color: 'green' })
+    expect(slotFill(input([t, b, s, navy, green], [t.id, b.id, s.id]), 'sweater').map((i) => i.id)).toEqual([navy.id])
   })
 })
