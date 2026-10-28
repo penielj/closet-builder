@@ -27,7 +27,11 @@ export async function processPhoto(file: Blob): Promise<{ photo: Blob; color: Pa
   const canvas = document.createElement('canvas')
   canvas.width = w
   canvas.height = h
-  canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+  const ctx = canvas.getContext('2d')!
+  // JPEG has no transparency: without this, an iPhone cutout's background turns black (DESIGN §4 "Photos").
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, h)
+  ctx.drawImage(img, 0, 0, w, h)
   const photo = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("This photo couldn't be saved."))), 'image/jpeg', JPEG_QUALITY))
 
@@ -35,7 +39,8 @@ export async function processPhoto(file: Blob): Promise<{ photo: Blob; color: Pa
 }
 
 // Samples the center 50% of the photo (DESIGN §4 "Auto color"), downscaled so the
-// vote runs over about a thousand pixels.
+// vote runs over about a thousand pixels. This canvas isn't filled, so a cutout's
+// transparent background stays transparent and isn't counted.
 function sampleCenterColor(img: HTMLImageElement): PaletteColor | null {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = COLOR_SAMPLE_SIDE
