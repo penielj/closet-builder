@@ -22,7 +22,6 @@ function serviceWorker(): Plugin {
       const publicFiles = readdirSync(publicDir, { recursive: true, withFileTypes: true })
         .filter((d) => d.isFile())
         .map((d) => relative(publicDir, join(d.parentPath, d.name)).split('\\').join('/'))
-        .filter((f) => !f.startsWith('spike/')) // the throwaway spike page isn't part of the app
       const files = [...Object.keys(bundle), ...publicFiles]
         .filter((f) => !f.endsWith('.map') && f !== 'index.html')
         .sort()

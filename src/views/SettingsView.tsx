@@ -1,17 +1,20 @@
-import { useState } from 'react'
+import { type ChangeEvent, useState } from 'react'
+import { BackupError, backupFileName, buildBackupFile, parseBackup } from '../backup/file'
+import { backupStatus, saveFile } from '../backup/save'
+import { localDate } from '../closet/daily'
 import LocationPicker from '../components/LocationPicker'
 import { db } from '../db'
-import { setComfortOffset } from '../db/repo'
+import { importBackup, markBackedUp, readSnapshot, setComfortOffset } from '../db/repo'
 import type { Settings } from '../db/schema'
 
-// DESIGN Flow E. Backup joins these in build step 3.
+// DESIGN Flow E.
 const COMFORT: { value: Settings['comfortOffset']; label: string }[] = [
   { value: 3, label: 'I run cold' },
   { value: 0, label: 'Neutral' },
   { value: -3, label: 'I run warm' },
 ]
 
-export default function SettingsView({ settings }: { settings: Settings }) {
+export default function SettingsView({ settings, itemCount }: { settings: Settings; itemCount: number }) {
   const [changingPlace, setChangingPlace] = useState(false)
   const { location } = settings
 
@@ -45,6 +48,82 @@ export default function SettingsView({ settings }: { settings: Settings }) {
           )}
         <p className="muted">Used for the weather and the season. It's stored to about 1km.</p>
       </div>
+
+      <Backup settings={settings} itemCount={itemCount} />
     </section>
+  )
+}
+
+// Export is two taps: the first builds the file, the second opens the share sheet,
+// because iPhones only open it straight after a tap.
+function Backup({ settings, itemCount }: { settings: Settings; itemCount: number }) {
+  const [prepared, setPrepared] = useState<{ file: File; changes: number }>()
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<{ text: string; error?: boolean }>()
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true)
+    setMessage(undefined)
+    try {
+      await fn()
+    } catch (e) {
+      const text = e instanceof BackupError ? e.message : `Something went wrong: ${(e as Error).message}`
+      setMessage({ text, error: true })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const exportCloset = () => run(async () => {
+    const snapshot = await readSnapshot(db)
+    const file = await buildBackupFile(snapshot, backupFileName(localDate()))
+    setPrepared({ file, changes: snapshot.settings.changesSinceBackup })
+  })
+
+  // No `await` before saveFile, or iOS no longer counts this as straight after the tap.
+  const save = () => {
+    if (!prepared) return
+    run(async () => {
+      if (await saveFile(prepared.file) === 'cancelled') return
+      await markBackedUp(db, prepared.changes)
+      setPrepared(undefined)
+      setMessage({ text: 'Backup saved.' })
+    })
+  }
+
+  const importCloset = (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.target
+    const file = input.files?.[0]
+    if (!file) return
+    run(async () => {
+      try {
+        const backup = parseBackup(await file.text())
+        const n = backup.items.length
+        if (itemCount > 0 && !confirm(`Replace your ${itemCount} items with the ${n} in this backup?`)) return
+        await importBackup(db, backup)
+        setPrepared(undefined)
+        setMessage({ text: `Restored ${n} ${n === 1 ? 'item' : 'items'}.` })
+      } finally {
+        input.value = '' // so picking the same file again still fires a change
+      }
+    })
+  }
+
+  return (
+    <div className="panel">
+      <h2>Backup</h2>
+      <p className="muted">{backupStatus(settings)}</p>
+      <p className="muted">Everything lives on this phone. Keep a backup in iCloud Drive or Google Drive in case you lose it or delete the app.</p>
+      <div className="row-buttons">
+        {prepared
+          ? <button className="primary" onClick={save} disabled={busy}>Save {(prepared.file.size / 1048576).toFixed(1)}MB backup</button>
+          : <button className="primary" onClick={exportCloset} disabled={busy}>{busy ? 'Preparing…' : 'Export closet'}</button>}
+        <label className={`button ${busy ? 'disabled' : ''}`}>
+          Import closet
+          <input type="file" accept="application/json,.json" hidden disabled={busy} onChange={importCloset} />
+        </label>
+      </div>
+      {message && <p className={message.error ? 'error' : 'muted'} role={message.error ? 'alert' : 'status'}>{message.text}</p>}
+    </div>
   )
 }

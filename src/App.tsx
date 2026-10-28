@@ -60,7 +60,7 @@ export default function App() {
         {view === 'today' ? <Today items={items} settings={settings} onAdd={() => setEditing('new')} />
           : view === 'closet' ? <Closet items={items} onAdd={() => setEditing('new')} onEdit={setEditing} />
           : view === 'hamper' ? <Hamper items={items} />
-          : <SettingsView settings={settings} />}
+          : <SettingsView settings={settings} itemCount={items.length} />}
       </main>
 
       <nav className="tabs">

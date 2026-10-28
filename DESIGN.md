@@ -142,7 +142,7 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
    - **Code cleanup from v7:** remove the color modes (`COLOR_MODES`, `lastColorMode`), `lastBackupSource` and the `'like'` rating.
    - Add the service worker and the iPhone install banner.
 2. **Today (done):** location and weather, the picker (§5), the saved daily outfit, lock, Not today, 👎, and Settings with Comfort and Location.
-3. **Backup:** export, import and the status line (Flow E). **Blocked** until spike 0.2 (iOS share sheet) passes, see `spikes/RESULTS.md`.
+3. **Backup (done):** export, import and the status line (Flow E). Spike 0.2 (iOS share sheet) passed first, on 2026-10-27, see `spikes/RESULTS.md`.
 
 ## 9. Later, if it's missed
 Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules · replacing only the slot that changed instead of re-picking.

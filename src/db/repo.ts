@@ -1,4 +1,5 @@
 import type { Table } from 'dexie'
+import type { Backup } from '../backup/file'
 import {
   type ClosetDB, type Forecast, type Item, type ItemId, type Settings, type TodayState,
   SETTINGS_KEY, defaultSettings, outfitKey, roundCoord, sortIds,
@@ -79,6 +80,37 @@ export const saveForecast = (db: ClosetDB, date: string, forecast: Forecast) =>
     const s = (await db.settings.get(SETTINGS_KEY))!
     const today = s.today?.date === date ? { ...s.today, forecast } : { date, itemIds: [], locked: [], forecast }
     await db.settings.update(SETTINGS_KEY, { today })
+  })
+
+// Backup (DESIGN Flow E and §7, "Backup file").
+
+// Everything an export needs, read in one transaction so items and dislikes agree.
+export const readSnapshot = (db: ClosetDB) =>
+  db.transaction('r', [db.items, db.outfits, db.settings], async () => ({
+    settings: (await db.settings.get(SETTINGS_KEY))!,
+    items: await db.items.orderBy('id').toArray(),
+    outfits: await db.outfits.toArray(),
+  }))
+
+// After a save, only the changes made since the snapshot are left to back up.
+export const markBackedUp = (db: ClosetDB, changesInBackup: number, now = new Date()) =>
+  db.transaction('rw', db.settings, async () => {
+    const s = (await db.settings.get(SETTINGS_KEY))!
+    await db.settings.update(SETTINGS_KEY, {
+      lastBackupAt: now.toISOString(),
+      changesSinceBackup: Math.max(0, s.changesSinceBackup - changesInBackup),
+    })
+  })
+
+// All or nothing: clears the closet and writes the backup with its original IDs, so
+// dislikes still point at the right items. `today` is cleared.
+export const importBackup = (db: ClosetDB, backup: Backup, now = new Date()) =>
+  db.transaction('rw', [db.items, db.outfits, db.settings], async () => {
+    await db.items.clear()
+    await db.outfits.clear()
+    await db.items.bulkAdd(backup.items)
+    await db.outfits.bulkPut(backup.outfits.map((o) => ({ key: outfitKey(o.itemIds), itemIds: sortIds(o.itemIds), rating: o.rating })))
+    await db.settings.put({ ...backup.settings, lastBackupAt: now.toISOString(), changesSinceBackup: 0 }, SETTINGS_KEY)
   })
 
 // Creates the settings row with defaults on first launch, inside one transaction so
