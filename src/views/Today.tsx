@@ -14,6 +14,7 @@ import {
 } from '../db/repo'
 import { type Item, type ItemId, SETTINGS_KEY, type Settings, type TodayState, outfitKey } from '../db/schema'
 import { type Category, OCCASIONS, type Occasion, label } from '../db/values'
+import { readPref, writePref } from '../prefs'
 import { currentPosition, fetchForecast } from '../weather/openMeteo'
 
 const WEATHER_WAIT_MS = 5000 // DESIGN Flow C, "Weather"
@@ -99,6 +100,9 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   // coat" is left out: it's worked out from the saved outfit, so it survives a reopen.
   const [pickNotes, setPickNotes] = useState<string[]>([])
   const [changingPlace, setChangingPlace] = useState(false)
+  // Rule 18: any clean combination, remembered on this phone.
+  const [free, setFree] = useState(() => readPref(FREE_PREF) === 'on')
+  const toggleFree = () => { setFree(!free); writePref(FREE_PREF, free ? 'off' : 'on') }
 
   // Weather: a forecast already fetched today is reused. Otherwise wait up to 5 seconds,
   // then go on without it. One arriving later is still saved for the weather line.
@@ -123,7 +127,7 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
     const result = pickOutfit({
       items,
       settings: { ...settings, lastOccasion: opts.occasion ?? settings.lastOccasion },
-      forecast, date, locked: state.locked, current: currentKey, dislikes: dislikedNow, random: Math.random,
+      forecast, date, locked: state.locked, current: currentKey, dislikes: dislikedNow, random: Math.random, free,
     })
     setFailure(result.ok ? undefined : result)
     setPickNotes(result.ok ? result.notes.filter((n) => n !== NO_COAT) : [])
@@ -134,7 +138,7 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   }
 
   // What rule 12's carousels and rule 15's refills choose against: today's outfit as it stands.
-  const swipeInput = { items, settings, forecast, date, outfit: plan.state.itemIds, locked: plan.state.locked, dislikes: dislikeKeys }
+  const swipeInput = { items, settings, forecast, date, outfit: plan.state.itemIds, locked: plan.state.locked, dislikes: dislikeKeys, free }
 
   // Picks when there's no outfit yet today. When pieces of it went to the hamper, were
   // marked Not today or were deleted (including from the Closet tab), only their slots are
@@ -164,9 +168,13 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   }, [plan, dislikes, weatherDone])
   /* oxlint-enable react/set-state-in-effect, react-hooks/exhaustive-deps */
 
+  // What each piece's carousel offers: just itself when locked or worn (rules 12, 16).
+  const choicesFor = (item: Item) => (plan.state.locked.includes(item.id) || plan.state.worn ? [item] : slotChoices(swipeInput, item.id))
+
   // Laid out head to toe (rule 12): the list below the grid follows the same order.
   const layout = layOut(plan.repick ? [] : plan.state.itemIds.map((id) => byId.get(id)!).filter(Boolean))
   const shown = layout.placed.map((p) => p.item)
+  const canSwipe = shown.some((i) => choicesFor(i).length > 1)
   const locked = new Set(plan.state.locked)
   // Rule 16: once worn, the outfit is fixed for the day and says what went to the hamper.
   const worn = !!plan.state.worn
@@ -231,12 +239,17 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
           </p>
         )}
 
-      <div className="chips" role="radiogroup" aria-label="Occasion">
-        {OCCASIONS.map((o) => (
-          <button key={o} role="radio" aria-checked={settings.lastOccasion === o} className={`chip ${settings.lastOccasion === o ? 'on' : ''}`} onClick={() => chooseOccasion(o)}>
-            {label(o)}
-          </button>
-        ))}
+      <div className="occasion-bar">
+        <div className={`chips ${free ? 'set-aside' : ''}`} role="radiogroup" aria-label="Occasion">
+          {OCCASIONS.map((o) => (
+            <button key={o} role="radio" aria-checked={settings.lastOccasion === o} className={`chip ${settings.lastOccasion === o ? 'on' : ''}`} onClick={() => chooseOccasion(o)}>
+              {label(o)}
+            </button>
+          ))}
+        </div>
+        <button role="switch" aria-checked={free} className={`chip free ${free ? 'on' : ''}`} onClick={toggleFree}>
+          Mix freely {free ? 'on' : 'off'}
+        </button>
       </div>
 
       {shown.length > 0 ? (
@@ -248,7 +261,7 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
                 item={item}
                 row={row}
                 col={col}
-                choices={locked.has(item.id) || worn ? [item] : slotChoices(swipeInput, item.id)}
+                choices={choicesFor(item)}
                 locked={locked.has(item.id) || worn}
                 onChoose={(id) => choose(item.id, id)}
                 onToggleLock={worn ? undefined : () => toggleLock(item.id)}
@@ -292,7 +305,13 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
                 <ul className="notes">
                   {pickNotes.map((n) => <li key={n}>{n}</li>)}
                   {noCoat && <li>{NO_COAT}</li>}
-                  {pickNotes.length === 0 && !noCoat && <li className="hint">Swipe a piece to change just that one.</li>}
+                  {pickNotes.length === 0 && !noCoat && (
+                    <li className="hint">
+                      {canSwipe
+                        ? 'Swipe a piece to change just that one.'
+                        : free ? 'Nothing else is clean to swipe to.' : 'Nothing else fits these rules today. Turn on Mix freely to swipe through everything clean.'}
+                    </li>
+                  )}
                 </ul>
                 <div className="outfit-bar">
                   <button onClick={dislike} aria-label="Never show this outfit again">Not for me</button>
@@ -361,6 +380,8 @@ function layOut(items: Item[]): { placed: Placed[]; cols: number } {
   const placed = rows.flatMap((r, y) => r.map((item, x) => ({ item, row: y + 1, col: x + 1 })))
   return { placed, cols: Math.max(1, ...rows.map((r) => r.length)) }
 }
+
+const FREE_PREF = 'closet.free'
 
 const LAYERS = ['sweater', 'outerwear', 'hat', 'bag'] as const
 const LAYER_NAMES: Record<(typeof LAYERS)[number], string> = { sweater: 'Sweater', outerwear: 'Jacket', hat: 'Hat', bag: 'Bag' }

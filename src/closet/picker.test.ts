@@ -565,3 +565,30 @@ describe('rotation (rule 17)', () => {
     expect(ids(pick({ items: [worn, rested, b, s], locked: [worn.id] }))).toEqual([worn.id, b.id, s.id])
   })
 })
+
+describe('mix freely (rule 18)', () => {
+  it('offers every clean piece of the slot, ignoring occasion, season, warmth, colors, patterns and 👎s', () => {
+    const top = item('top', { color: 'red', pattern: 'checked', createdAt: '2026-10-01T00:00:00.000Z' })
+    const [b, s] = [item('bottom', { color: 'blue', pattern: 'print' }), item('shoes')]
+    const others = [
+      item('top', { occasions: ['work'], createdAt: '2026-10-02T00:00:00.000Z' }),
+      item('top', { seasons: ['summer'], createdAt: '2026-10-03T00:00:00.000Z' }),
+      item('top', { warmth: 3, color: 'green', pattern: 'striped', createdAt: '2026-10-04T00:00:00.000Z' }),
+    ]
+    const dirty = item('top', { inHamper: true }), skipped = item('top', { skipDate: DATE })
+    const input = {
+      items: [top, b, s, ...others, dirty, skipped], settings: { comfortOffset: 0 as const, lastOccasion: 'casual' as const, location: LONDON },
+      forecast: { high: 28, low: 20, rainChance: 0 }, date: DATE, locked: [], outfit: [top.id, b.id, s.id],
+      dislikes: new Set([outfitKey([others[0].id, b.id, s.id])]),
+    }
+    expect(slotChoices(input, top.id).map((i) => i.id)).toEqual([top.id])
+    expect(slotChoices({ ...input, free: true }, top.id).map((i) => i.id)).toEqual([top.id, ...others.map((i) => i.id)])
+  })
+
+  it('lets Shuffle combine anything clean, where the rules found nothing', () => {
+    const items = [item('top', { color: 'red' }), item('bottom', { color: 'blue' }), item('shoes', { occasions: ['work'] })]
+    expect(pick({ items }).ok).toBe(false)
+    expect(pick({ items, free: true })).toMatchObject({ ok: true, itemIds: items.map((i) => i.id) })
+    expect(pick({ items: [...items.slice(0, 2), item('shoes', { inHamper: true })], free: true }).ok).toBe(false) // still clean only
+  })
+})

@@ -238,6 +238,13 @@ button.link { padding: 0; border: 0; background: none; text-decoration: underlin
 .location .city { margin-bottom: 8px; }
 .location .city .primary { width: 100%; }
 
+/* The occasions, then the Mix freely switch on the right. With it on, the occasions don't
+   apply, so they step back. */
+.occasion-bar { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: 18px; }
+.occasion-bar .chips { flex: 1 1 auto; }
+.chips.set-aside { opacity: 0.45; }
+.chip.free { padding: 6px 0 16px; white-space: nowrap; }
+
 /* Today's label, like the one Le Labo types onto a bottle: place, date, weather. */
 .weather { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; font-size: 11px; color: var(--muted); }
 

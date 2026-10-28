@@ -12,6 +12,7 @@ export interface PickInput {
   locked: ItemId[]
   current?: string // key of the outfit on screen now
   dislikes: ReadonlySet<string> // outfit keys
+  free?: boolean // rule 18, Mix freely: only rule 1 (clean) applies to the base and the carousels
   random: () => number
 }
 
@@ -87,7 +88,7 @@ export function fitsDayFor(settings: PickInput['settings'], date: string): (i: I
 export function pickOutfit(input: PickInput): PickResult {
   const { items, settings, forecast, date, random } = input
   const occasion = settings.lastOccasion
-  const fitsDay = fitsDayFor(settings, date)
+  const fitsDay = input.free ? (i: Item) => available(i, date) : fitsDayFor(settings, date)
 
   // Locks on items that are gone or no longer available are ignored (they're unlocked by the caller).
   const byId = new Map(items.map((i) => [i.id, i]))
@@ -95,10 +96,10 @@ export function pickOutfit(input: PickInput): PickResult {
 
   const lockedSweater = locked.filter((i) => i.category === 'sweater')
   const attempt = (checkWarmth: boolean) => {
-    const target = checkWarmth && forecast ? targetWarmth(feelsLike(forecast.high, settings.comfortOffset)) : undefined
+    const target = checkWarmth && forecast && !input.free ? targetWarmth(feelsLike(forecast.high, settings.comfortOffset)) : undefined
     const passes = (i: Item) => fitsDay(i) && (target === undefined || Math.abs(i.warmth - target) <= 1)
-    return combos(items, locked, passes)
-      .filter((c) => !input.dislikes.has(outfitKey(c.map((i) => i.id))) && goesTogether([...c, ...lockedSweater]))
+    return combos(items, locked, passes, input.free)
+      .filter((c) => input.free || (!input.dislikes.has(outfitKey(c.map((i) => i.id))) && goesTogether([...c, ...lockedSweater])))
   }
 
   let options = attempt(true)
@@ -128,7 +129,7 @@ export function pickOutfit(input: PickInput): PickResult {
   const base = options[Math.floor(random() * options.length)]
 
   // Then the layers, in order (rules 13, 9 and 14).
-  const sweater = pickSweater(items, locked, fitsDay, base, forecast, settings.comfortOffset, random, date)
+  const sweater = pickSweater(items, locked, fitsDay, base, forecast, settings.comfortOffset, random, date, input.free)
   if (sweater === null) notes.push(NO_SWEATER)
   const coat = pickCoat(items, locked, fitsDay, forecast, settings.comfortOffset, random, date)
   if (coat === null) notes.push(NO_COAT)
@@ -197,6 +198,7 @@ function outfitItems(input: SwipeInput): Item[] {
 // sweater rules 6 and 7 with the rest, and for the base rule 4 and the 👎s too.
 function fitsWith(input: SwipeInput, rest: Item[]): (c: Item) => boolean {
   const { settings, forecast, date } = input
+  if (input.free) return (c) => available(c, date) // rule 18: anything clean
   const fitsDay = fitsDayFor(settings, date)
   const target = forecast && targetWarmth(feelsLike(forecast.high, settings.comfortOffset))
   return (c) => {
@@ -210,7 +212,7 @@ function fitsWith(input: SwipeInput, rest: Item[]): (c: Item) => boolean {
 }
 
 // Rules 5–7: every top + bottom (or dress) + shoes, with locked items forced into their slot.
-function combos(items: Item[], locked: Item[], passes: (i: Item) => boolean): Item[][] {
+function combos(items: Item[], locked: Item[], passes: (i: Item) => boolean, free = false): Item[][] {
   const slot = (category: Item['category']) => {
     const lock = locked.find((i) => i.category === category)
     return lock ? [lock] : items.filter((i) => i.category === category && passes(i))
@@ -227,7 +229,7 @@ function combos(items: Item[], locked: Item[], passes: (i: Item) => boolean): It
   const out: Item[][] = []
   for (const base of bases) for (const shoes of slot('shoes')) {
     const outfit = [...base, shoes]
-    if (goesTogether(outfit)) out.push(outfit)
+    if (free || goesTogether(outfit)) out.push(outfit)
   }
   return out
 }
@@ -261,14 +263,14 @@ function pickCoat(
 // at all), or null for "No clean sweater goes with this."
 function pickSweater(
   items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, base: Item[],
-  forecast: Forecast | undefined, comfortOffset: number, random: () => number, date: string,
+  forecast: Forecast | undefined, comfortOffset: number, random: () => number, date: string, free = false,
 ): Item | undefined | null {
   const lockedSweater = locked.find((i) => i.category === 'sweater')
   if (lockedSweater) return lockedSweater
   if (!forecast || !sweaterWanted(forecast, comfortOffset)) return undefined
   const all = items.filter((i) => i.category === 'sweater')
   if (all.length === 0) return undefined
-  const fit = rested(all.filter((i) => fitsDay(i) && goesTogether([...base, i])), date) // rule 17
+  const fit = rested(all.filter((i) => fitsDay(i) && (free || goesTogether([...base, i]))), date) // rule 17
   return fit.length ? fit[Math.floor(random() * fit.length)] : null
 }
 

@@ -10,6 +10,7 @@ import {
 } from '../db/values'
 import { NEVER, WASH_CHOICES, defaultWashAfter } from '../closet/wear'
 import { cutout } from '../photo/cutout'
+import { readPref, writePref } from '../prefs'
 import { loadImage, processPhoto } from '../photo/resize'
 
 interface Props { item?: Item; items: Item[]; onDone: () => void }
@@ -17,10 +18,7 @@ interface Props { item?: Item; items: Item[]; onDone: () => void }
 const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
 const mb = (n: number) => `${Math.round(n / 1048576)}MB`
 
-// A per-device convenience, so storage that's blocked or cleared just means the default.
 const CUTOUT_PREF = 'closet.cutout'
-const readPref = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
-const writePref = (key: string, value: string) => { try { localStorage.setItem(key, value) } catch { /* default next time */ } }
 
 export default function ItemForm({ item, items, onDone }: Props) {
   const [name, setName] = useState(item?.name ?? '')
