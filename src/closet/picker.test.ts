@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { type Forecast, type Item, outfitKey } from '../db/schema'
 import {
   NO_COAT, ONLY_OUTFIT, type PickInput, type SwipeInput, coatWanted, feelsLike, pickOutfit, seasonOf, swipeItem, targetWarmth,
+  whyNotFor,
 } from './picker'
 
 const DATE = '2026-10-22' // October: autumn in the north, spring in the south
@@ -276,17 +277,17 @@ describe('nothing fits (rule 10)', () => {
 
   it('says which slot has nothing clean, in order: tops, bottoms, shoes', () => {
     const msg = (items: Item[]) => (pick({ items }) as { message: string }).message
-    expect(msg([item('top', { inHamper: true }), item('bottom'), item('shoes')])).toBe('No clean casual tops.')
-    expect(msg([item('bottom')])).toBe('No clean casual tops.')
-    expect(msg([item('top'), item('shoes')])).toBe('No clean casual bottoms.')
-    expect(msg([item('top')])).toBe('No clean casual bottoms.')
-    expect(msg([item('top'), item('bottom')])).toBe('No clean casual shoes.')
-    expect(msg([item('dress')])).toBe('No clean casual shoes.') // a dress covers tops and bottoms
+    expect(msg([item('top', { inHamper: true }), item('bottom'), item('shoes')])).toBe('No casual tops for today.')
+    expect(msg([item('bottom')])).toBe('No casual tops for today.')
+    expect(msg([item('top'), item('shoes')])).toBe('No casual bottoms for today.')
+    expect(msg([item('top')])).toBe('No casual bottoms for today.')
+    expect(msg([item('top'), item('bottom')])).toBe('No casual shoes for today.')
+    expect(msg([item('dress')])).toBe('No casual shoes for today.') // a dress covers tops and bottoms
   })
 
   it("uses the occasion's name", () => {
     const r = pick({ items: [item('top')], settings: { comfortOffset: 0, lastOccasion: 'work', location: LONDON } })
-    expect(r).toEqual({ ok: false, message: 'No clean work tops.', reason: 'missing' })
+    expect(r).toEqual({ ok: false, message: 'No work tops for today.', reason: 'missing', slot: ['top', 'dress'] })
   })
 
   it("says the clothes clash when each slot has something, and suggests laundry only when the hamper isn't empty", () => {
@@ -392,5 +393,24 @@ describe('swipe (rule 12)', () => {
     const [top, bottom, shoes] = [item('top'), item('bottom'), item('shoes')]
     expect(swipe({ items: [top, bottom, shoes], outfit: [top.id, bottom.id, shoes.id] }, shoes.id))
       .toEqual({ ok: false, message: 'No other pair of shoes fits.' })
+  })
+})
+
+describe('why an item is out today (rule 10 screen)', () => {
+  it('names the reason for each of three tops when none can be picked (phone test 2)', () => {
+    const skipped = item('top', { skipDate: DATE })
+    const summer = item('top', { seasons: ['summer'] })
+    const work = item('top', { occasions: ['work'] })
+    const items = [skipped, summer, work, item('bottom'), item('shoes')]
+    const settings = { comfortOffset: 0 as const, lastOccasion: 'casual' as const, location: LONDON }
+    const r = pick({ items, settings })
+    expect(r).toEqual({ ok: false, message: 'No casual tops for today.', reason: 'missing', slot: ['top', 'dress'] })
+    const whyNot = whyNotFor(settings, DATE)
+    expect([skipped, summer, work].map((i) => whyNot(i)?.text)).toEqual([
+      'Marked Not today', 'Summer only, and it\'s autumn', 'Not tagged Casual',
+    ])
+    expect(whyNot(item('top', { inHamper: true }))?.why).toBe('hamper')
+    expect(whyNot(item('top', { seasons: ['autumn', 'winter'] }))).toBeUndefined()
+    expect(whyNotFor({ ...settings, location: undefined }, DATE)(summer)).toBeUndefined() // no location: no season rule
   })
 })

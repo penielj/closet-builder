@@ -67,6 +67,10 @@ export const laundryDone = (db: ClosetDB) =>
 export const skipToday = (db: ClosetDB, id: ItemId, today: string) =>
   db.items.update(id, { skipDate: today })
 
+// Undoes Not today, from the "nothing fits" screen. Dexie deletes a field set to undefined.
+export const wearToday = (db: ClosetDB, id: ItemId) =>
+  db.items.update(id, { skipDate: undefined })
+
 export const setLastOccasion = (db: ClosetDB, occasion: Occasion) =>
   db.settings.update(SETTINGS_KEY, { lastOccasion: occasion })
 

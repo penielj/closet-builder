@@ -78,7 +78,8 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
    - If there's no such coat, the outfit is shown without one, with the note "No clean coat."
    - A locked coat is always shown, even when the weather doesn't call for one.
 10. **Nothing fits:** try once more without rule 4. If that fails too, show a message:
-    - If no top or dress passes rules 1–3, say "No clean {occasion} tops." Do the same for bottoms (when there are no dresses either) and for shoes. Use the first one that applies, in that order.
+    - If no top or dress passes rules 1–3, say "No {occasion} tops for today." Do the same for bottoms (when there are no dresses either) and for shoes. Use the first one that applies, in that order.
+    - Under it, list that slot's items, each with why it's out and a way back in: "In the hamper" (**Take out**), "Marked Not today" (**Wear today**, which clears `skipDate`), "Not tagged {Occasion}" or "Summer only, and it's autumn" (**Edit**). Phone test 2: with one of three tops marked Not today, the screen said only "No clean casual tops," and the other two were out for season or occasion tags without saying so.
     - Otherwise, the first that applies:
       - Locks are set and an outfit would fit without them: "Your locked items don't go with anything clean. Unlock one to see more outfits."
       - An outfit would fit without the 👎s: "You've given a 👎 to every {occasion} outfit that's left." with a **Forget my 👎s** button, which clears every dislike and counts as a real change.

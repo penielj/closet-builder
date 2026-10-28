@@ -2,22 +2,24 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { type PointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { localDate, planToday } from '../closet/daily'
 import {
-  NO_COAT, type NothingFits, ONLY_OUTFIT, coatWanted, fitsDayFor, isBase, pickOutfit, swipeItem,
+  NO_COAT, type NothingFits, ONLY_OUTFIT, coatWanted, fitsDayFor, isBase, pickOutfit, swipeItem, whyNotFor,
 } from '../closet/picker'
 import { MINIMUM, closetReadiness } from '../closet/readiness'
 import LocationPicker from '../components/LocationPicker'
 import { StoredPhoto } from '../components/Photo'
 import { db } from '../db'
-import { clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday } from '../db/repo'
+import {
+  clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday, wearToday,
+} from '../db/repo'
 import { type Item, type ItemId, type Settings, type TodayState, outfitKey } from '../db/schema'
 import { OCCASIONS, type Occasion, label } from '../db/values'
 import { currentPosition, fetchForecast } from '../weather/openMeteo'
 
 const WEATHER_WAIT_MS = 5000 // DESIGN Flow C, "Weather"
 
-interface Props { items: Item[]; settings: Settings; onAdd: () => void }
+interface Props { items: Item[]; settings: Settings; onAdd: () => void; onEdit: (item: Item) => void }
 
-export default function Today({ items, settings, onAdd }: Props) {
+export default function Today({ items, settings, onAdd, onEdit }: Props) {
   const date = useLocalDate()
   const { ready, have, missing } = closetReadiness(items)
 
@@ -41,7 +43,7 @@ export default function Today({ items, settings, onAdd }: Props) {
   }
 
   if (!settings.location) return <FirstLocation />
-  return <DailyOutfit items={items} settings={settings} date={date} />
+  return <DailyOutfit items={items} settings={settings} date={date} onEdit={onEdit} />
 }
 
 // The device's local date, checked again whenever the app comes back to the front.
@@ -79,7 +81,7 @@ function FirstLocation() {
   )
 }
 
-function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Settings; date: string }) {
+function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; settings: Settings; date: string; onEdit: (item: Item) => void }) {
   const dislikes = useLiveQuery(() => db.outfits.toArray(), [])
   const dislikeKeys = useMemo(() => new Set(dislikes?.map((o) => o.key)), [dislikes])
   const { lat, lon, label: place } = settings.location!
@@ -91,7 +93,7 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
   const weatherKey = `${date}|${lat}|${lon}`
   const [weatherDoneFor, setWeatherDoneFor] = useState<string>()
   const weatherDone = !!forecast || weatherDoneFor === weatherKey
-  const [failure, setFailure] = useState<{ message: string; reason: NothingFits }>()
+  const [failure, setFailure] = useState<{ message: string; reason: NothingFits; slot?: Item['category'][] }>()
   const [onlyOne, setOnlyOne] = useState(false)
   const [swipeNote, setSwipeNote] = useState<string>()
   const [changingPlace, setChangingPlace] = useState(false)
@@ -145,6 +147,7 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
   const locked = new Set(plan.state.locked)
   const hasCoat = shown.some((i) => !isBase(i))
   const fitsDay = fitsDayFor(settings, date)
+  const whyNot = whyNotFor(settings, date)
   const noCoat = shown.length > 0 && forecast && coatWanted(forecast, settings.comfortOffset) && !hasCoat
     && !items.some((i) => !isBase(i) && fitsDay(i))
 
@@ -238,6 +241,23 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
                   <button onClick={() => toggleLock(item.id)}>Unlock</button>
                 </li>
               ))}
+            </ul>
+          )}
+          {/* The empty slot's items, each with why it's out today and a way back in. */}
+          {failure.slot && (
+            <ul className="list">
+              {items.filter((i) => failure.slot!.includes(i.category)).map((item) => {
+                const out = whyNot(item)
+                return (
+                  <li key={item.id} className="row">
+                    <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
+                    <span className="row-name">{item.name}<span className="row-why muted">{out?.text}</span></span>
+                    {out?.why === 'skipped' ? <button onClick={() => wearToday(db, item.id)}>Wear today</button>
+                      : out?.why === 'hamper' ? <button onClick={() => setInHamper(db, item.id, false)}>Take out</button>
+                      : <button onClick={() => onEdit(item)}>Edit</button>}
+                  </li>
+                )
+              })}
             </ul>
           )}
           {failure.reason === 'disliked' && (

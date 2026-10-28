@@ -166,6 +166,7 @@ button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
 .row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .row .photo { width: 56px; border-radius: 8px; }
 .row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-why { display: block; white-space: normal; }
 
 .form { max-width: 720px; margin: 0 auto; padding: 0 16px calc(32px + env(safe-area-inset-bottom)); }
 .form fieldset { border: 0; margin: 0; padding: 0; }

@@ -1,5 +1,5 @@
 import { type Forecast, type Item, type ItemId, type Settings, outfitKey } from '../db/schema'
-import { NEUTRALS, type Occasion, type Season, type Warmth } from '../db/values'
+import { NEUTRALS, type Occasion, type Season, type Warmth, label } from '../db/values'
 
 // The outfit rules of DESIGN §5, as a pure function: no database or React in here.
 
@@ -20,7 +20,7 @@ export type NothingFits = 'missing' | 'locked' | 'disliked' | 'clash'
 
 export type PickResult =
   | { ok: true; itemIds: ItemId[]; key: string; notes: string[] }
-  | { ok: false; message: string; reason: NothingFits }
+  | { ok: false; message: string; reason: NothingFits; slot?: Item['category'][] } // slot: the empty one, for 'missing'
 
 export const ONLY_OUTFIT = 'This is the only outfit that fits.'
 export const NO_COAT = 'No clean coat.'
@@ -50,13 +50,26 @@ export const isBase = (i: Pick<Item, 'category'>) => i.category !== 'outerwear'
 
 const available = (i: Item, date: string) => !i.inHamper && i.skipDate !== date // rule 1
 
-// Rules 1–3: clean, tagged with the occasion, and in season.
-export function fitsDayFor(settings: PickInput['settings'], date: string): (i: Item) => boolean {
+// Why an item fails rules 1–3 today, in words for the "nothing fits" screen, or
+// undefined when it passes: clean, tagged with the occasion, and in season.
+export type Excluded = 'hamper' | 'skipped' | 'occasion' | 'season'
+export function whyNotFor(settings: PickInput['settings'], date: string): (i: Item) => { why: Excluded; text: string } | undefined {
+  const occasion = settings.lastOccasion
   const season = settings.location && seasonOf(date, settings.location.lat)
-  return (i) =>
-    available(i, date)
-    && i.occasions.includes(settings.lastOccasion)
-    && (!season || i.seasons.length === 0 || i.seasons.includes(season))
+  return (i) => {
+    if (i.inHamper) return { why: 'hamper', text: 'In the hamper' }
+    if (i.skipDate === date) return { why: 'skipped', text: 'Marked Not today' }
+    if (!i.occasions.includes(occasion)) return { why: 'occasion', text: `Not tagged ${label(occasion)}` }
+    if (season && i.seasons.length > 0 && !i.seasons.includes(season)) {
+      return { why: 'season', text: `${i.seasons.map(label).join(', ')} only, and it's ${season}` }
+    }
+    return undefined
+  }
+}
+
+export function fitsDayFor(settings: PickInput['settings'], date: string): (i: Item) => boolean {
+  const whyNot = whyNotFor(settings, date)
+  return (i) => !whyNot(i)
 }
 
 export function pickOutfit(input: PickInput): PickResult {
@@ -181,12 +194,12 @@ function pickCoat(
 // the retry without rule 4, so warmth isn't checked here either.
 function nothingFits(
   items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, occasion: Occasion, dislikes: ReadonlySet<string>,
-): { message: string; reason: NothingFits } {
-  const missing = (message: string) => ({ message, reason: 'missing' as const })
+): { message: string; reason: NothingFits; slot?: Item['category'][] } {
+  const missing = (message: string, slot: Item['category'][]) => ({ message, reason: 'missing' as const, slot })
   const any = (c: Item['category']) => locked.some((i) => i.category === c) || items.some((i) => i.category === c && fitsDay(i))
-  if (!any('top') && !any('dress')) return missing(`No clean ${occasion} tops.`)
-  if (!any('bottom') && !any('dress')) return missing(`No clean ${occasion} bottoms.`)
-  if (!any('shoes')) return missing(`No clean ${occasion} shoes.`)
+  if (!any('top') && !any('dress')) return missing(`No ${occasion} tops for today.`, ['top', 'dress'])
+  if (!any('bottom') && !any('dress')) return missing(`No ${occasion} bottoms for today.`, ['bottom', 'dress'])
+  if (!any('shoes')) return missing(`No ${occasion} shoes for today.`, ['shoes'])
 
   const liked = (c: Item[]) => !dislikes.has(outfitKey(c.map((i) => i.id)))
   if (locked.length > 0 && combos(items, [], fitsDay).some(liked)) {

@@ -3,7 +3,7 @@ import Dexie from 'dexie'
 import { ClosetDB, SETTINGS_KEY } from './schema'
 import {
   type NewItem, addItem, clearDislikes, deleteItem, dislikeOutfit, ensureSettings, laundryDone, saveForecast, saveToday,
-  setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, updateItem,
+  setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, updateItem, wearToday,
 } from './repo'
 
 let db: ClosetDB
@@ -76,6 +76,14 @@ describe('items', () => {
     const item = (await db.items.get(await addItem(db, shirt, now)))!
     expect(item.inHamper).toBe(false)
     expect(item.createdAt).toBe('2026-10-21T08:00:00.000Z')
+  })
+
+  it('wear today undoes Not today, without counting as a change', async () => {
+    const id = await addItem(db, shirt)
+    await skipToday(db, id, '2026-10-28')
+    await wearToday(db, id)
+    expect(await db.items.get(id)).not.toHaveProperty('skipDate')
+    expect(await changes()).toBe(1) // only the add
   })
 
   it('laundry done empties the whole hamper', async () => {

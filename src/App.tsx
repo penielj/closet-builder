@@ -80,7 +80,7 @@ export default function App() {
       <InstallBanner />
 
       <main>
-        {view === 'today' ? <Today items={items} settings={settings} onAdd={() => setEditing('new')} />
+        {view === 'today' ? <Today items={items} settings={settings} onAdd={() => setEditing('new')} onEdit={setEditing} />
           : view === 'closet' ? <Closet items={items} onAdd={() => setEditing('new')} onEdit={setEditing} />
           : view === 'hamper' ? <Hamper items={items} />
           : <SettingsView settings={settings} itemCount={items.length} />}
