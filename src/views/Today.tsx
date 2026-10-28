@@ -214,9 +214,22 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
                 locked={locked.has(item.id)}
                 onChoose={(id) => choose(item.id, id)}
                 onToggleLock={() => toggleLock(item.id)}
-                onSkip={() => skipToday(db, item.id, date)}
-                onHamper={() => setInHamper(db, item.id, true)}
               />
+            ))}
+          </ul>
+          {/* The flat lay has no text, so the pieces are named here. */}
+          <ul className="pieces">
+            {shown.map((item) => (
+              <li key={item.id}>
+                <span className="piece-text">
+                  {item.brand && <span className="look-brand">{item.brand}</span>}
+                  <span className="look-name">{item.name}</span>
+                </span>
+                <span className="look-actions">
+                  <button className="link" onClick={() => skipToday(db, item.id, date)}>Not today</button>
+                  <button className="link" onClick={() => setInHamper(db, item.id, true)}>Hamper</button>
+                </span>
+              </li>
             ))}
           </ul>
           <ul className="notes">
@@ -274,13 +287,13 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
 
 const SETTLE_MS = 120 // a carousel counts as settled this long after its last scroll event
 
-// One slot of the outfit as a carousel of its choices (DESIGN §5 rule 12): a native
-// horizontal scroller that snaps a photo at a time and follows the finger. When it
+// One slot of the outfit's flat lay as a carousel of its choices (DESIGN §5 rule 12): a
+// native horizontal scroller that snaps a photo at a time and follows the finger. When it
 // settles on another item, that item replaces this one. The lock sits in the photo's
-// top-right corner; a locked slot shows only its item and doesn't scroll.
-function SlotCarousel({ item, choices, locked, onChoose, onToggleLock, onSkip, onHamper }: {
-  item: Item; choices: Item[]; locked: boolean
-  onChoose: (id: ItemId) => void; onToggleLock: () => void; onSkip: () => void; onHamper: () => void
+// top-right corner; a locked slot shows only its item and doesn't scroll. The slot's
+// height comes from its category, so a shirt is wide and trousers are tall (CSS).
+function SlotCarousel({ item, choices, locked, onChoose, onToggleLock }: {
+  item: Item; choices: Item[]; locked: boolean; onChoose: (id: ItemId) => void; onToggleLock: () => void
 }) {
   const track = useRef<HTMLDivElement>(null)
   const at = Math.max(0, choices.findIndex((c) => c.id === item.id))
@@ -291,12 +304,16 @@ function SlotCarousel({ item, choices, locked, onChoose, onToggleLock, onSkip, o
   const [scrolled, setScrolled] = useState<{ view: string; n: number }>()
   const inView = scrolled?.view === view ? scrolled.n : at
   const settle = useRef<ReturnType<typeof setTimeout>>(undefined)
+  // Only a scroll the person started (a finger, a trackpad, a wheel) chooses anything. A
+  // resize or rotation also moves a snapping scroller, and that mustn't change the outfit.
+  const touched = useRef(false)
 
   // Shows the outfit's item, without animating, whenever it or the choices change.
-  useLayoutEffect(() => {
+  const align = () => {
     const el = track.current
     if (el) el.scrollLeft = at * el.clientWidth
-  }, [at, ids])
+  }
+  useLayoutEffect(align, [at, ids]) // oxlint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => clearTimeout(settle.current), [])
 
   const onScroll = () => {
@@ -305,17 +322,24 @@ function SlotCarousel({ item, choices, locked, onChoose, onToggleLock, onSkip, o
     const n = Math.min(choices.length - 1, Math.max(0, Math.round(el.scrollLeft / el.clientWidth)))
     setScrolled({ view, n })
     clearTimeout(settle.current)
-    settle.current = setTimeout(() => { if (choices[n].id !== item.id) onChoose(choices[n].id) }, SETTLE_MS)
+    settle.current = setTimeout(() => {
+      if (!touched.current) { align(); setScrolled(undefined); return }
+      touched.current = false
+      if (choices[n].id !== item.id) onChoose(choices[n].id)
+    }, SETTLE_MS)
   }
+  const touch = () => { touched.current = true }
 
-  const shown = choices[inView] ?? item
   return (
-    <li className={`look ${locked ? 'locked' : ''}`}>
+    <li className={`look look-${item.category} ${locked ? 'locked' : ''}`}>
       <div className="look-photo">
-        <div className="look-track" ref={track} onScroll={locked ? undefined : onScroll}>
+        <div
+          className="look-track" ref={track} onScroll={locked ? undefined : onScroll}
+          onTouchStart={touch} onPointerDown={touch} onWheel={touch}
+        >
           {choices.map((c) => (
             <div key={c.id} className="look-slide">
-              <StoredPhoto itemId={c.id} color={c.color} alt={c.name} />
+              <StoredPhoto itemId={c.id} color={c.color} alt={c.name} trim />
             </div>
           ))}
         </div>
@@ -323,14 +347,6 @@ function SlotCarousel({ item, choices, locked, onChoose, onToggleLock, onSkip, o
           <LockIcon closed={locked} />
         </button>
         {choices.length > 1 && <span className="look-count">{inView + 1}/{choices.length}</span>}
-      </div>
-      <div className="look-caption">
-        {shown.brand && <span className="look-brand">{shown.brand}</span>}
-        <span className="look-name">{shown.name}</span>
-        <span className="look-actions">
-          <button className="link" onClick={onSkip}>Not today</button>
-          <button className="link" onClick={onHamper}>Hamper</button>
-        </span>
       </div>
     </li>
   )
