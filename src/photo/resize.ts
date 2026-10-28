@@ -1,5 +1,6 @@
 import type { PaletteColor } from '../db/values'
 import { dominantPaletteColor } from './color'
+import { whitenBackground } from './whiten'
 
 export const MAX_SIDE = 800
 const JPEG_QUALITY = 0.82
@@ -32,20 +33,24 @@ export async function processPhoto(file: Blob): Promise<{ photo: Blob; color: Pa
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, w, h)
   ctx.drawImage(img, 0, 0, w, h)
+  const pixels = ctx.getImageData(0, 0, w, h)
+  const whitened = whitenBackground(pixels.data, w, h)
+  if (whitened) ctx.putImageData(pixels, 0, 0)
   const photo = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("This photo couldn't be saved."))), 'image/jpeg', JPEG_QUALITY))
 
-  return { photo, color: sampleCenterColor(img) }
+  // A whitened photo is sampled after the correction, so a warm cast doesn't turn white beige.
+  const color = whitened ? sampleCenterColor(canvas, w, h) : sampleCenterColor(img, img.naturalWidth, img.naturalHeight)
+  return { photo, color }
 }
 
 // Samples the center 50% of the photo (DESIGN §4 "Auto color"), downscaled so the
-// vote runs over about a thousand pixels. This canvas isn't filled, so a cutout's
-// transparent background stays transparent and isn't counted.
-function sampleCenterColor(img: HTMLImageElement): PaletteColor | null {
+// vote runs over about a thousand pixels. For the original image this canvas isn't
+// filled, so a cutout's transparent background stays transparent and isn't counted.
+function sampleCenterColor(source: CanvasImageSource, w: number, h: number): PaletteColor | null {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = COLOR_SAMPLE_SIDE
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-  const sw = img.naturalWidth / 2, sh = img.naturalHeight / 2
-  ctx.drawImage(img, sw / 2, sh / 2, sw, sh, 0, 0, COLOR_SAMPLE_SIDE, COLOR_SAMPLE_SIDE)
+  ctx.drawImage(source, w / 4, h / 4, w / 2, h / 2, 0, 0, COLOR_SAMPLE_SIDE, COLOR_SAMPLE_SIDE)
   return dominantPaletteColor(ctx.getImageData(0, 0, COLOR_SAMPLE_SIDE, COLOR_SAMPLE_SIDE).data)
 }

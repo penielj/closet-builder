@@ -94,6 +94,12 @@ export default function ItemForm({ item, items, onDone }: Props) {
           <input type="file" accept="image/*" hidden onChange={(e) => onPhoto(e.target.files?.[0])} />
         </label>
         {photo && <button type="button" onClick={() => setNewPhoto(null)}>Remove photo</button>}
+        {!photo && (
+          <p className="muted photo-tip">
+            Lay it flat on a white sheet in daylight and shoot from above: the app turns the sheet pure white.
+            For a perfect cut-out, touch and hold the clothing in Photos, share the lifted subject, save it, and choose it here.
+          </p>
+        )}
       </div>
 
       {error && <p className="error" role="alert">{error}</p>}

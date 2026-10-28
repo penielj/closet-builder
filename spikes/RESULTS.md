@@ -73,3 +73,25 @@ Pass criteria (DESIGN §8 step 4), from the installed app on the iPhone, with 20
 | Which ones it got wrong, and what it said | | |
 
 Recorded, not pass/fail: first load time, cached load time, and whether GPU (WebGPU) loads and is faster than CPU.
+
+## 0.4 Background removal: not run yet
+Same page, section 3, run in the same session as 0.3. The model is RMBG-1.4 (BRIA), loaded as on its model card (transformers.js's background-removal pipeline doesn't recognize it). It predicts a mask at 1024×1024, and the page composites the photo onto white. **License:** free for non-commercial use only, which fits a personal app; selling the app would need BRIA's commercial license. Clothes need to be laid flat or hung: worn clothes keep the person, since the model keeps the subject.
+
+Checked on a Mac in Chrome (2026-10-28), on sneakers on black velvet and a man in a t-shirt. Both cut cleanly (the t-shirt photo kept the man, as expected):
+
+| Run on | Model files | Per photo |
+|---|---|---|
+| CPU (wasm, one thread: GitHub Pages can't enable threads) | 42.3MB (q8) | ~7.1s |
+| GPU (WebGPU) | 84.1MB (fp16) | 0.26–0.50s |
+
+The CPU time is the risk: a phone is likely slower than this Mac. Pass criteria, from the installed app on the iPhone, with 20 photos of clothes laid flat or hung on ordinary backgrounds (a bed, a floor, a door):
+
+| Criterion | CPU (q8) | GPU (fp16) |
+|---|---|---|
+| At least 16 of 20 rated Good (the tally line) | | |
+| Under 5s per photo (the tally line: avg and slowest) | | |
+| Loads and runs at all | | |
+| No crash or reload (no "⚠ RELOAD" in the log) | | |
+| What the Bad ones got wrong (cut into the garment, left background, lost a strap…) | | |
+
+Download: q8 plus the shared ~28MB runtime is ~70MB. With fp16 it's ~112MB, over the 100MB budget of 0.3 on its own. Shipping category recognition too adds that model (43MB for MobileCLIP-S0), so the budget gets decided with both results in hand.

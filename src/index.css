@@ -141,6 +141,8 @@ button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
 .card-action { margin: 8px 10px 10px; padding: 6px; font-size: 13px; }
 
 .photo { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+/* Catalog tiles: the whole garment, centered on white in both themes, like a store's site. */
+img.photo { object-fit: contain; background: #ffffff; padding: 6%; }
 /* A color dot on a neutral tile, so black and white items stay visible in both themes. */
 .placeholder { display: grid; place-items: center; background: var(--bg); border-bottom: 1px solid var(--line); }
 .placeholder-dot { width: 42%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 2px var(--muted); }
@@ -181,6 +183,7 @@ button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
   background: var(--surface);
 }
 .photo-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+.photo-tip { flex-basis: 100%; margin: 0; }
 .photo-picker .photo { width: 120px; border-radius: var(--radius); border: 1px solid var(--line); }
 .swatches { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 8px; padding: 4px 0; max-width: 420px; }
 .swatch { aspect-ratio: 1; padding: 0; border-radius: 50%; border: 1px solid var(--line); }

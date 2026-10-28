@@ -48,9 +48,10 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 ## 4. Features
 | Area | Feature |
 |---|---|
-| Closet | A photo grid filtered by category. Add, edit and delete items. Hamper items are dimmed. |
-| Photos | Taken with the camera or uploaded, then resized on the device to about 800px JPEG. That also removes EXIF data, including location. Transparent areas (an iPhone cutout) are filled with white, since JPEG has no transparency and would turn them black. |
-| Auto color | Samples the center 50% of the photo and snaps the dominant color to the nearest palette color. Transparent pixels are skipped, so a cutout's background isn't counted. You can override it. |
+| Closet | A photo grid filtered by category. Add, edit and delete items. Hamper items are dimmed. Photos are shown whole (not cropped), centered on a white tile with a little padding, in both themes, like a store's catalog. |
+| Photos | Taken with the camera or uploaded, then resized on the device to about 800px JPEG. That also removes EXIF data, including location. Transparent areas (an iPhone cutout) are filled with white, since JPEG has no transparency and would turn them black. The add-item form suggests laying the item flat on a white sheet in daylight. |
+| Auto-whiten | When the outer 5% of the photo is a plain, light surface (average level at least 150, channel spread at most 60, little variation), each channel is scaled so that surface becomes pure white, and anything at 235 or above after scaling becomes 255. That also takes out a warm cast from indoor light. Dark, colored or busy backgrounds, and already-white ones, are left alone (`src/photo/whiten.ts`). |
+| Auto color | Samples the center 50% of the photo and snaps the dominant color to the nearest palette color. Transparent pixels are skipped, so a cutout's background isn't counted. A whitened photo is sampled after the correction, so a warm cast doesn't turn white into beige. You can override it. |
 | Brand | Autocompletes from existing items, so spellings stay consistent. |
 | Weather | Open-Meteo forecast (free, no key): `daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max`, `timezone=auto`, `forecast_days=1`, in °C. The location comes from browser geolocation, or from a typed city looked up with Open-Meteo's geocoding API (first result). |
 | Comfort | "I run cold / neutral / warm" sets the comfort offset to +3, 0 or −3. Rule 4 subtracts it, so running cold makes every temperature feel 3°C colder. |
@@ -168,9 +169,11 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
      - the one-time download is under 100MB and works offline afterwards
      - no crash or reload
    - If spike 0.3 passes, step 5 builds it in: the category is pre-selected from the photo the way the color is, and you can change it. If it fails, the form starts on the last category used instead.
+   - **Catalog look:** whole photos on white tiles and auto-whiten (§4).
+   - **Spike 0.4, background removal:** RMBG-1.4 on the same spike page and library, in the same session as 0.3, on 20 photos of clothes laid flat or hung on ordinary backgrounds. Pass: at least 16 rated Good, under 5 seconds per photo, no crash or reload. Its license allows non-commercial use only, which fits a personal app. Criteria and the Mac numbers are in `spikes/RESULTS.md`. If it passes, Add item removes the background automatically, and the total download for both models gets decided with both results in hand.
 
 ## 9. Later, if it's missed
-Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules · removing the background in the app (the iPhone cutout covers it for now).
+Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules.
 
 ## 10. Testing
 - **Unit tests for the picker:**

@@ -1,7 +1,8 @@
 <!doctype html>
-<!-- Spike 0.3 (DESIGN §8 step 4, results in spikes/RESULTS.md): can an on-device image
-     model tell the category from a clothing photo, accurately and fast enough, on the
-     installed iPhone app? Throwaway page, deleted once the results are recorded.
+<!-- Spikes 0.3 and 0.4 (DESIGN §8 step 4, results in spikes/RESULTS.md): can on-device
+     models tell the category from a clothing photo (0.3) and remove its background (0.4),
+     well and fast enough, on the installed iPhone app? Throwaway page, deleted once the
+     results are recorded.
      The text side of the model is precomputed (spikes/category-embed-text.mjs into
      text-embeds.json), so the phone only downloads the vision model. -->
 <html lang="en">
@@ -40,7 +41,7 @@
     <option value="wasm">CPU (wasm)</option>
     <option value="webgpu">GPU (WebGPU)</option>
   </select>
-  <button id="load">Load model</button>
+  <button id="load" disabled>Load model</button>
   <div id="status">Not loaded.</div>
 
   <h2>2. Photos</h2>
@@ -49,7 +50,15 @@
   <div id="tally">No photos yet.</div>
   <div id="results"></div>
 
-  <h2>3. Offline</h2>
+  <h2>3. Background removal (spike 0.4)</h2>
+  <p>RMBG-1.4 (~44MB). Pick photos of clothes on any background, ideally not a white sheet. Rate each result: is it clean enough for the closet?</p>
+  <button id="loadBg" disabled>Load background model</button>
+  <div id="bgStatus">Not loaded.</div>
+  <label class="button">Choose photos<input id="bgPhotos" type="file" accept="image/*" multiple hidden disabled></label>
+  <div id="bgTally">No photos yet.</div>
+  <div id="bgResults"></div>
+
+  <h2>4. Offline</h2>
   <p>After loading a model once: turn on Airplane Mode, close this app from the app switcher, open it again, and tap Load model. It should load from the cache.</p>
   <button id="storage">Show storage used</button>
 
@@ -77,7 +86,7 @@ async function loadLibrary() {
 // itself to open offline. The worker's precache includes this page.
 navigator.serviceWorker?.register('../sw.js').catch(() => {})
 
-const { env, AutoProcessor, CLIPVisionModelWithProjection, RawImage } = await loadLibrary()
+const { env, AutoModel, AutoProcessor, CLIPVisionModelWithProjection, RawImage } = await loadLibrary()
 
 const $ = (id) => document.getElementById(id)
 const log = (msg) => { $('log').textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n` }
@@ -224,6 +233,121 @@ $('photos').onchange = async (e) => {
     $('photos').disabled = false
   }
 }
+
+// Spike 0.4: RMBG-1.4, loaded as on its model card (the background-removal pipeline
+// doesn't recognize it). It predicts a mask at 1024×1024; the photo is composited onto white.
+const RMBG = 'briaai/RMBG-1.4'
+let bg // { processor, model }
+$('loadBg').onclick = async () => {
+  $('loadBg').disabled = true
+  busy('load RMBG-1.4')
+  let total = 0
+  const t = performance.now()
+  try {
+    const progress_callback = (p) => {
+      if (p.status === 'progress_total') { total = p.total; $('bgStatus').textContent = `Downloading ${mb(p.loaded)} of ${mb(p.total)}…` }
+    }
+    // The CPU/GPU choice from section 1 applies here too. On the GPU it runs at fp16 (~88MB):
+    // 8-bit weights are a CPU format.
+    const device = $('device').value
+    const dtype = device === 'webgpu' ? 'fp16' : 'q8'
+    const model = await AutoModel.from_pretrained(RMBG, { config: { model_type: 'custom' }, dtype, device, progress_callback })
+    const processor = await AutoProcessor.from_pretrained(RMBG, {
+      config: {
+        do_normalize: true, do_pad: false, do_rescale: true, do_resize: true, image_mean: [0.5, 0.5, 0.5],
+        feature_extractor_type: 'ImageFeatureExtractor', image_std: [1, 1, 1], resample: 2,
+        rescale_factor: 0.00392156862745098, size: { width: 1024, height: 1024 },
+      },
+    })
+    bg = { model, processor }
+    const msg = `Loaded RMBG-1.4 ${dtype} on ${device} in ${((performance.now() - t) / 1000).toFixed(1)}s${total ? `, model files ${mb(total)}` : ''} (online=${navigator.onLine})`
+    $('bgStatus').textContent = msg
+    log(msg)
+    $('bgPhotos').disabled = false
+  } catch (e) {
+    $('bgStatus').textContent = `Failed: ${e.message}`
+    log(`RMBG load FAILED: ${e.name}: ${e.message}`)
+  } finally {
+    busy()
+    $('loadBg').disabled = false
+  }
+}
+
+async function removeBackground(blob) {
+  const image = await RawImage.fromBlob(blob)
+  const t = performance.now()
+  const { pixel_values } = await bg.processor(image)
+  const { output } = await bg.model({ input: pixel_values })
+  const mask = await RawImage.fromTensor(output[0].mul(255).to('uint8')).resize(image.width, image.height)
+  const ms = performance.now() - t
+  const rgba = image.rgba().data
+  for (let i = 0; i < mask.data.length; i++) rgba[i * 4 + 3] = mask.data[i]
+  const cut = Object.assign(document.createElement('canvas'), { width: image.width, height: image.height })
+  cut.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba), image.width, image.height), 0, 0)
+  const out = Object.assign(document.createElement('canvas'), { width: image.width, height: image.height })
+  const ctx = out.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, out.width, out.height)
+  ctx.drawImage(cut, 0, 0)
+  return { result: await new Promise((resolve) => out.toBlob(resolve, 'image/jpeg', 0.82)), ms }
+}
+
+const bgRows = [] // { rating: '' | 'good' | 'bad', ms }
+function bgTally() {
+  const good = bgRows.filter((r) => r.rating === 'good').length, bad = bgRows.filter((r) => r.rating === 'bad').length
+  const times = bgRows.map((r) => r.ms)
+  const avg = times.reduce((a, b) => a + b, 0) / times.length
+  const text = `${good} good, ${bad} bad, ${bgRows.length - good - bad} unrated of ${bgRows.length} · avg ${(avg / 1000).toFixed(2)}s, slowest ${(Math.max(...times) / 1000).toFixed(2)}s per photo`
+  $('bgTally').textContent = text
+  return text
+}
+
+$('bgPhotos').onchange = async (e) => {
+  const files = [...e.target.files]
+  e.target.value = ''
+  if (!bg) return
+  $('bgPhotos').disabled = true
+  busy(`remove background from ${files.length} photos`)
+  try {
+    for (const file of files) {
+      const original = await resize(file)
+      const { result, ms } = await removeBackground(original)
+      const row = { rating: '', ms }
+      bgRows.push(row)
+      const el = document.createElement('div')
+      el.className = 'result'
+      const before = Object.assign(document.createElement('img'), { src: URL.createObjectURL(original) })
+      const after = Object.assign(document.createElement('img'), { src: URL.createObjectURL(result) })
+      Object.assign(after.style, { width: '144px', height: '144px', objectFit: 'contain' }) // whole result, to judge the edges
+      const body = document.createElement('div')
+      body.className = 'body'
+      body.innerHTML = `${(ms / 1000).toFixed(2)}s<br>`
+      const select = document.createElement('select')
+      select.innerHTML = '<option value="">Rate it…</option><option value="good">Good: clean enough</option><option value="bad">Bad: messy or cut wrong</option>'
+      select.onchange = () => {
+        row.rating = select.value
+        el.classList.toggle('wrong', row.rating === 'bad')
+        log(`background rated ${row.rating || 'unrated'}`)
+        bgTally()
+      }
+      body.append(select)
+      el.append(before, after, body)
+      $('bgResults').append(el)
+      log(`${file.name}: background removed in ${ms.toFixed(0)}ms`)
+      bgTally()
+    }
+    log(`BG TALLY RMBG-1.4: ${bgTally()}`)
+  } catch (err) {
+    log(`background FAILED: ${err.name}: ${err.message}`)
+  } finally {
+    busy()
+    $('bgPhotos').disabled = false
+  }
+}
+
+// The buttons start disabled: their handlers only exist once the library has loaded.
+$('load').disabled = $('loadBg').disabled = false
+log('library ready')
 
 $('storage').onclick = async () => {
   const { usage, quota } = await navigator.storage.estimate()
