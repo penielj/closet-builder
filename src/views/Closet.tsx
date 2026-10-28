@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import Photo from '../components/Photo'
+import { StoredPhoto } from '../components/Photo'
 import { db } from '../db'
 import { setInHamper } from '../db/repo'
 import type { Item } from '../db/schema'
@@ -29,7 +29,7 @@ export default function Closet({ items, onAdd, onEdit }: Props) {
             {shown.map((item) => (
               <li key={item.id} className={`card ${item.inHamper ? 'dirty' : ''}`}>
                 <button className="card-open" onClick={() => onEdit(item)} aria-label={`Edit ${item.name}`}>
-                  <Photo blob={item.photo} color={item.color} alt={item.name} />
+                  <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
                   <span className="card-name">{item.name}</span>
                 </button>
                 <button className="card-action" onClick={() => setInHamper(db, item.id, !item.inHamper)}>

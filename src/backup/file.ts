@@ -48,14 +48,17 @@ const backupSchema = z.object({
   outfits: z.array(outfitSchema),
 })
 
+// In the file each item carries its photo; in the database photos have their own table.
+export type ItemWithPhoto = Item & { photo?: Blob }
+
 // What import writes: items with their photos decoded back to Blobs.
 export interface Backup {
   settings: Omit<Settings, 'today'>
-  items: Item[]
+  items: ItemWithPhoto[]
   outfits: Omit<Outfit, 'key'>[]
 }
 
-export interface Snapshot { settings: Settings; items: Item[]; outfits: Outfit[] }
+export interface Snapshot { settings: Settings; items: ItemWithPhoto[]; outfits: Outfit[] }
 
 export const backupFileName = (localDate: string) => `closet-${localDate}.closet.json`
 
@@ -97,7 +100,7 @@ export function parseBackup(text: string): Backup {
   const { settings, items, outfits } = parsed.data
   return {
     settings,
-    items: items.map(({ photo, ...item }) => ({ ...item, ...(photo && { photo: dataUrlToBlob(photo) }) }) as Item),
+    items: items.map(({ photo, ...item }) => ({ ...item, ...(photo && { photo: dataUrlToBlob(photo) }) }) as ItemWithPhoto),
     outfits,
   }
 }

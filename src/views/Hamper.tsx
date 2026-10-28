@@ -1,4 +1,4 @@
-import Photo from '../components/Photo'
+import { StoredPhoto } from '../components/Photo'
 import { db } from '../db'
 import { laundryDone, setInHamper } from '../db/repo'
 import type { Item } from '../db/schema'
@@ -17,7 +17,7 @@ export default function Hamper({ items }: { items: Item[] }) {
       <ul className="list">
         {dirty.map((item) => (
           <li key={item.id} className="row">
-            <Photo blob={item.photo} color={item.color} alt={item.name} />
+            <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
             <span className="row-name">{item.name}</span>
             <button onClick={() => setInHamper(db, item.id, false)}>Take out</button>
           </li>

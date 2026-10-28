@@ -22,18 +22,41 @@ export default function App() {
   const settings = useLiveQuery(() => db.settings.get(SETTINGS_KEY), [])
   const inHamper = items?.filter((i) => i.inHamper).length ?? 0
 
+  const [failure, setFailure] = useState<string>()
+
   useEffect(() => { ensureSettings(db).then(() => setSettingsReady(true)) }, [])
+
+  // A write a button started and nothing caught (hamper, laundry, lock…) shows here
+  // instead of failing silently (DESIGN §7 "Writes").
+  useEffect(() => {
+    const show = (e: PromiseRejectionEvent) => setFailure((e.reason as Error)?.message ?? String(e.reason))
+    window.addEventListener('unhandledrejection', show)
+    return () => window.removeEventListener('unhandledrejection', show)
+  }, [])
 
   // Nothing renders until the settings row exists: update() on a missing row does
   // nothing and reports no error, so an early write would be lost (DESIGN §8 step 1).
   if (!settingsReady || !settings || !items) return null
 
+  const failureBanner = failure && (
+    <p className="banner failure" role="alert">
+      <span>That didn't save: {failure}. Close the app and open it again, then try once more.</span>
+      <button className="link" onClick={() => setFailure(undefined)}>Dismiss</button>
+    </p>
+  )
+
   if (editing) {
-    return <ItemForm item={editing === 'new' ? undefined : editing} items={items} onDone={() => setEditing(null)} />
+    return (
+      <>
+        {failureBanner}
+        <ItemForm item={editing === 'new' ? undefined : editing} items={items} onDone={() => setEditing(null)} />
+      </>
+    )
   }
 
   return (
     <div className="app">
+      {failureBanner}
       <header className="topbar">
         <h1>{TITLES[view]}</h1>
         <div className="topbar-actions">

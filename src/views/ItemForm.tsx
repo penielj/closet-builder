@@ -1,3 +1,4 @@
+import { useLiveQuery } from 'dexie-react-hooks'
 import { type FormEvent, useMemo, useState } from 'react'
 import Photo from '../components/Photo'
 import { db } from '../db'
@@ -22,7 +23,11 @@ export default function ItemForm({ item, items, onDone }: Props) {
   const [seasons, setSeasons] = useState<Season[]>(item?.seasons ?? [])
   const [warmth, setWarmth] = useState<Warmth>(item?.warmth ?? 2)
   const [brand, setBrand] = useState(item?.brand ?? '')
-  const [photo, setPhoto] = useState<Blob | undefined>(item?.photo)
+  // `newPhoto`: undefined keeps the stored photo, null removes it, a Blob replaces it.
+  // Saving without touching the photo doesn't rewrite it.
+  const stored = useLiveQuery(async () => (item ? (await db.photos.get(item.id))?.blob : undefined), [item?.id])
+  const [newPhoto, setNewPhoto] = useState<Blob | null>()
+  const photo = newPhoto === undefined ? stored : newPhoto ?? undefined
   const [colorTouched, setColorTouched] = useState(Boolean(item))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
@@ -40,7 +45,7 @@ export default function ItemForm({ item, items, onDone }: Props) {
     setError(undefined)
     try {
       const result = await processPhoto(file)
-      setPhoto(result.photo)
+      setNewPhoto(result.photo)
       if (result.color && !colorTouched) setColor(result.color)
     } catch (e) {
       setError((e as Error).message)
@@ -56,11 +61,11 @@ export default function ItemForm({ item, items, onDone }: Props) {
     // An existing brand with different capitals is reused, so "zara" becomes "Zara".
     const typed = brand.trim()
     const finalBrand = typed ? brands.find((b) => b.toLowerCase() === typed.toLowerCase()) ?? typed : undefined
-    const fields = { name: name.trim(), category, color, pattern, occasions, seasons, warmth, brand: finalBrand, photo }
+    const fields = { name: name.trim(), category, color, pattern, occasions, seasons, warmth, brand: finalBrand }
     setBusy(true)
     try {
-      if (item) await updateItem(db, item.id, fields)
-      else await addItem(db, fields)
+      if (item) await updateItem(db, item.id, { ...fields, photo: newPhoto })
+      else await addItem(db, { ...fields, photo: newPhoto ?? undefined })
       onDone()
     } catch (e) {
       setError(`Couldn't save: ${(e as Error).message}`)
@@ -88,7 +93,7 @@ export default function ItemForm({ item, items, onDone }: Props) {
           {photo ? 'Change photo' : 'Take or choose photo'}
           <input type="file" accept="image/*" hidden onChange={(e) => onPhoto(e.target.files?.[0])} />
         </label>
-        {photo && <button type="button" onClick={() => setPhoto(undefined)}>Remove photo</button>}
+        {photo && <button type="button" onClick={() => setNewPhoto(null)}>Remove photo</button>}
       </div>
 
       {error && <p className="error" role="alert">{error}</p>}

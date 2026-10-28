@@ -14,10 +14,16 @@ export interface Item {
   seasons: Season[]
   warmth: Warmth
   brand?: string
-  photo?: Blob
   inHamper: boolean
   skipDate?: string // YYYY-MM-DD
   createdAt: string // ISO
+}
+
+// Photos live in their own table, so hamper and "not today" writes never rewrite a photo
+// (DESIGN §7, "Why photos have their own table").
+export interface ItemPhoto {
+  itemId: ItemId
+  blob: Blob
 }
 
 export interface Outfit {
@@ -61,6 +67,7 @@ export const defaultSettings = (): Settings => ({
 
 export class ClosetDB extends Dexie {
   items!: EntityTable<Item, 'id'>
+  photos!: Table<ItemPhoto, ItemId>
   outfits!: Table<Outfit, string>
   settings!: Table<Settings, string>
 
@@ -76,6 +83,12 @@ export class ClosetDB extends Dexie {
         delete s.lastColorMode
         delete s.lastBackupSource
       })
+    })
+    // v3 moves each item's photo into the photos table (DESIGN §8 step 4, hamper bug).
+    this.version(3).stores({ photos: 'itemId' }).upgrade(async (tx) => {
+      const withPhoto = (await tx.table('items').toArray()).filter((i) => i.photo)
+      await tx.table('photos').bulkAdd(withPhoto.map((i) => ({ itemId: i.id, blob: i.photo })))
+      await tx.table('items').toCollection().modify((i) => { delete i.photo })
     })
   }
 }

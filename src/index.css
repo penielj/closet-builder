@@ -196,6 +196,21 @@ button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
   font-size: 14px;
 }
 
+.banner.failure {
+  position: sticky;
+  top: env(safe-area-inset-top);
+  z-index: 4;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 16px;
+  background: var(--danger);
+  color: var(--bg);
+}
+.app > .banner.failure { margin: 8px 0; }
+.banner.failure .link { color: inherit; flex-shrink: 0; }
+
 button.link { padding: 0; border: 0; background: none; text-decoration: underline; font-size: 14px; }
 .row-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .location .city { margin-bottom: 8px; }

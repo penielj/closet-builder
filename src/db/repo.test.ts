@@ -96,12 +96,44 @@ describe('items', () => {
     expect((await db.settings.get(SETTINGS_KEY))!.location).toEqual({ lat: 51.51, lon: -0.13, label: 'London' })
   })
 
-  it('stores a photo Blob byte-for-byte', async () => {
-    const bytes = Uint8Array.from({ length: 5000 }, (_, i) => i & 0xff)
-    const id = await addItem(db, { ...shirt, photo: new Blob([bytes], { type: 'image/jpeg' }) })
-    const photo = (await db.items.get(id))!.photo!
+})
+
+describe('photos (DESIGN §7, own table)', () => {
+  const jpeg = (seed: number) => new Blob([Uint8Array.from({ length: 5000 }, (_, i) => (i * seed) & 0xff)], { type: 'image/jpeg' })
+  const stored = async (id: number) => (await db.photos.get(id))?.blob
+
+  it('stores a photo Blob byte-for-byte, outside the item record', async () => {
+    const blob = jpeg(1)
+    const id = await addItem(db, { ...shirt, photo: blob })
+    const photo = (await stored(id))!
     expect(photo.type).toBe('image/jpeg')
-    expect(new Uint8Array(await photo.arrayBuffer())).toEqual(bytes)
+    expect(new Uint8Array(await photo.arrayBuffer())).toEqual(new Uint8Array(await blob.arrayBuffer()))
+    expect(await db.items.get(id)).not.toHaveProperty('photo')
+  })
+
+  it('hamper, laundry done, "not today" and edits without a photo never write the photos table', async () => {
+    const id = await addItem(db, { ...shirt, photo: jpeg(1) })
+    const writes: string[] = []
+    db.photos.hook('creating', () => { writes.push('create') })
+    db.photos.hook('updating', () => { writes.push('update') })
+    db.photos.hook('deleting', () => { writes.push('delete') })
+    await setInHamper(db, id, true)
+    await laundryDone(db)
+    await skipToday(db, id, '2026-10-28')
+    await updateItem(db, id, { name: 'Ivory shirt' })
+    expect(writes).toEqual([])
+    expect(await stored(id)).toBeDefined()
+  })
+
+  it('an edit can replace or remove the photo, and deleting the item deletes it', async () => {
+    const id = await addItem(db, { ...shirt, photo: jpeg(1) })
+    await updateItem(db, id, { photo: jpeg(3) })
+    expect(await (await stored(id))!.arrayBuffer()).toEqual(await jpeg(3).arrayBuffer())
+    await updateItem(db, id, { photo: null })
+    expect(await stored(id)).toBeUndefined()
+    await updateItem(db, id, { photo: jpeg(5) })
+    await deleteItem(db, id)
+    expect(await db.photos.count()).toBe(0)
   })
 })
 
@@ -167,5 +199,28 @@ describe('v2 migration (DESIGN §8 step 1 cleanup)', () => {
     const v2 = new ClosetDB(name)
     expect(await v2.settings.get(SETTINGS_KEY)).toEqual({ comfortOffset: 0, lastOccasion: 'work', changesSinceBackup: 4 })
     expect((await v2.outfits.toArray()).map((o) => o.key)).toEqual(['3|4'])
+  })
+})
+
+describe('v3 migration (DESIGN §8 step 4, hamper bug)', () => {
+  it('moves each photo into the photos table and off its item', async () => {
+    const name = `repo-test-${++dbCount}`
+    const v2 = new Dexie(name)
+    v2.version(2).stores({ items: '++id, category, createdAt', outfits: 'key', settings: '' })
+    const bytes = Uint8Array.from({ length: 5000 }, (_, i) => i & 0xff)
+    await v2.table('items').bulkAdd([
+      { ...shirt, inHamper: true, createdAt: '2026-10-21T08:00:00.000Z', photo: new Blob([bytes], { type: 'image/jpeg' }) },
+      { ...shirt, name: 'No photo', inHamper: false, createdAt: '2026-10-21T08:00:00.000Z' },
+    ])
+    v2.close()
+
+    const v3 = new ClosetDB(name)
+    const [withPhoto, without] = await v3.items.orderBy('id').toArray()
+    expect(withPhoto).not.toHaveProperty('photo')
+    expect(withPhoto.inHamper).toBe(true)
+    const photo = (await v3.photos.get(withPhoto.id))!.blob
+    expect(photo.type).toBe('image/jpeg')
+    expect(new Uint8Array(await photo.arrayBuffer())).toEqual(bytes)
+    expect(await v3.photos.get(without.id)).toBeUndefined()
   })
 })

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { ClosetDB, type Item, SETTINGS_KEY } from '../db/schema'
+import { ClosetDB, SETTINGS_KEY } from '../db/schema'
 import {
   type NewItem, addItem, dislikeOutfit, ensureSettings, importBackup, markBackedUp, readSnapshot,
   saveToday, setComfortOffset, setInHamper,
@@ -45,15 +45,15 @@ describe('backup round trip (DESIGN §10)', () => {
     await addItem(target, item({ name: 'Old phone item' }))
     await importBackup(target, parseBackup(await exportText(db)), new Date('2026-10-27T09:00:00Z'))
 
-    const before = await db.items.orderBy('id').toArray()
-    const after = await target.items.orderBy('id').toArray()
-    const noPhoto = (i: Item) => ({ ...i, photo: undefined })
-    expect(after.map(noPhoto)).toEqual(before.map(noPhoto)) // same IDs too
+    expect(await target.items.orderBy('id').toArray()).toEqual(await db.items.orderBy('id').toArray()) // same IDs too
+    const before = (await readSnapshot(db)).items
+    const after = (await readSnapshot(target)).items
     for (const [n, i] of after.entries()) {
       expect(await bytes(i.photo)).toEqual(await bytes(before[n].photo))
       expect(i.photo?.type).toBe(before[n].photo?.type)
     }
     expect(after[2].photo).toBeUndefined()
+    expect(await target.photos.count()).toBe(2)
     expect(await target.outfits.toArray()).toEqual(await db.outfits.toArray())
 
     const s = (await target.settings.get(SETTINGS_KEY))!

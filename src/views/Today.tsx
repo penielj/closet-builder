@@ -4,7 +4,7 @@ import { localDate, planToday } from '../closet/daily'
 import { NO_COAT, ONLY_OUTFIT, coatWanted, fitsDayFor, isBase, pickOutfit } from '../closet/picker'
 import { MINIMUM, closetReadiness } from '../closet/readiness'
 import LocationPicker from '../components/LocationPicker'
-import Photo from '../components/Photo'
+import { StoredPhoto } from '../components/Photo'
 import { db } from '../db'
 import { dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday } from '../db/repo'
 import { type Item, type ItemId, type Settings, type TodayState, outfitKey } from '../db/schema'
@@ -193,7 +193,7 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
           <ul className="outfit">
             {shown.map((item) => (
               <li key={item.id} className={`outfit-item ${locked.has(item.id) ? 'locked' : ''}`}>
-                <Photo blob={item.photo} color={item.color} alt={item.name} />
+                <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
                 <div className="outfit-body">
                   <span className="outfit-name">{item.name}</span>
                   <div className="outfit-actions">

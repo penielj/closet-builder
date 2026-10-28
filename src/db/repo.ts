@@ -1,5 +1,5 @@
 import type { Table } from 'dexie'
-import type { Backup } from '../backup/file'
+import type { Backup, Snapshot } from '../backup/file'
 import {
   type ClosetDB, type Forecast, type Item, type ItemId, type Settings, type TodayState,
   SETTINGS_KEY, defaultSettings, outfitKey, roundCoord, sortIds,
@@ -19,19 +19,28 @@ async function tracked<T>(db: ClosetDB, tables: Table[], fn: () => Promise<T>): 
   })
 }
 
-export type NewItem = Omit<Item, 'id' | 'inHamper' | 'createdAt'>
-export type ItemPatch = Partial<Omit<Item, 'id' | 'inHamper' | 'skipDate' | 'createdAt'>>
+export type NewItem = Omit<Item, 'id' | 'inHamper' | 'createdAt'> & { photo?: Blob }
+// `photo`: left out keeps the stored photo, null removes it, a Blob replaces it.
+export type ItemPatch = Partial<Omit<Item, 'id' | 'inHamper' | 'skipDate' | 'createdAt'>> & { photo?: Blob | null }
 
-export const addItem = (db: ClosetDB, item: NewItem, now = new Date()) =>
-  tracked(db, [db.items], () =>
-    db.items.add({ ...item, inHamper: false, createdAt: now.toISOString() }))
+export const addItem = (db: ClosetDB, { photo, ...item }: NewItem, now = new Date()) =>
+  tracked(db, [db.items, db.photos], async () => {
+    const id = await db.items.add({ ...item, inHamper: false, createdAt: now.toISOString() })
+    if (photo) await db.photos.add({ itemId: id, blob: photo })
+    return id
+  })
 
-export const updateItem = (db: ClosetDB, id: ItemId, patch: ItemPatch) =>
-  tracked(db, [db.items], async () => { await db.items.update(id, patch) })
+export const updateItem = (db: ClosetDB, id: ItemId, { photo, ...patch }: ItemPatch) =>
+  tracked(db, [db.items, db.photos], async () => {
+    await db.items.update(id, patch)
+    if (photo === null) await db.photos.delete(id)
+    else if (photo) await db.photos.put({ itemId: id, blob: photo })
+  })
 
 export const deleteItem = (db: ClosetDB, id: ItemId) =>
-  tracked(db, [db.items, db.outfits], async () => {
+  tracked(db, [db.items, db.photos, db.outfits], async () => {
     await db.items.delete(id)
+    await db.photos.delete(id)
     await db.outfits.filter((o) => o.itemIds.includes(id)).delete() // dislikes for a deleted item are now orphans
   })
 
@@ -84,13 +93,18 @@ export const saveForecast = (db: ClosetDB, date: string, forecast: Forecast) =>
 
 // Backup (DESIGN Flow E and §7, "Backup file").
 
-// Everything an export needs, read in one transaction so items and dislikes agree.
-export const readSnapshot = (db: ClosetDB) =>
-  db.transaction('r', [db.items, db.outfits, db.settings], async () => ({
-    settings: (await db.settings.get(SETTINGS_KEY))!,
-    items: await db.items.orderBy('id').toArray(),
-    outfits: await db.outfits.toArray(),
-  }))
+// Everything an export needs, read in one transaction so items, photos and dislikes agree.
+// Each item carries its photo, as in the backup file.
+export const readSnapshot = (db: ClosetDB): Promise<Snapshot> =>
+  db.transaction('r', [db.items, db.photos, db.outfits, db.settings], async () => {
+    const photos = new Map((await db.photos.toArray()).map((p) => [p.itemId, p.blob]))
+    const items = await db.items.orderBy('id').toArray()
+    return {
+      settings: (await db.settings.get(SETTINGS_KEY))!,
+      items: items.map((i) => (photos.has(i.id) ? { ...i, photo: photos.get(i.id) } : i)),
+      outfits: await db.outfits.toArray(),
+    }
+  })
 
 // After a save, only the changes made since the snapshot are left to back up.
 export const markBackedUp = (db: ClosetDB, changesInBackup: number, now = new Date()) =>
@@ -105,10 +119,12 @@ export const markBackedUp = (db: ClosetDB, changesInBackup: number, now = new Da
 // All or nothing: clears the closet and writes the backup with its original IDs, so
 // dislikes still point at the right items. `today` is cleared.
 export const importBackup = (db: ClosetDB, backup: Backup, now = new Date()) =>
-  db.transaction('rw', [db.items, db.outfits, db.settings], async () => {
+  db.transaction('rw', [db.items, db.photos, db.outfits, db.settings], async () => {
     await db.items.clear()
+    await db.photos.clear()
     await db.outfits.clear()
-    await db.items.bulkAdd(backup.items)
+    await db.items.bulkAdd(backup.items.map(({ photo: _photo, ...item }) => item))
+    await db.photos.bulkAdd(backup.items.filter((i) => i.photo).map((i) => ({ itemId: i.id, blob: i.photo! })))
     await db.outfits.bulkPut(backup.outfits.map((o) => ({ key: outfitKey(o.itemIds), itemIds: sortIds(o.itemIds), rating: o.rating })))
     await db.settings.put({ ...backup.settings, lastBackupAt: now.toISOString(), changesSinceBackup: 0 }, SETTINGS_KEY)
   })
