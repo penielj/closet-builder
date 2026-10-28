@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { type PointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { localDate, planToday } from '../closet/daily'
 import {
-  NO_COAT, type NothingFits, coatWanted, fitsDayFor, isBase, pickOutfit, swipeItem, whyNotFor,
+  NO_COAT, type NothingFits, coatWanted, fitsDayFor, isBase, pickOutfit, slotChoices, whyNotFor,
 } from '../closet/picker'
 import { MINIMUM, closetReadiness } from '../closet/readiness'
 import LocationPicker from '../components/LocationPicker'
@@ -97,7 +97,6 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   // The last pick's notes ("the only outfit that fits", "the only top that fits"). "No clean
   // coat" is left out: it's worked out from the saved outfit, so it survives a reopen.
   const [pickNotes, setPickNotes] = useState<string[]>([])
-  const [swipeNote, setSwipeNote] = useState<string>()
   const [changingPlace, setChangingPlace] = useState(false)
 
   // Weather: a forecast already fetched today is reused. Otherwise wait up to 5 seconds,
@@ -127,7 +126,6 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
     })
     setFailure(result.ok ? undefined : result)
     setPickNotes(result.ok ? result.notes.filter((n) => n !== NO_COAT) : [])
-    setSwipeNote(undefined)
     const itemIds = result.ok ? result.itemIds : []
     // Skip a write that changes nothing, or the live query would loop on "nothing fits".
     if (today?.date === state.date && sameIds(today.itemIds, itemIds) && sameIds(today.locked, state.locked)) return
@@ -158,13 +156,12 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
     locked: locked.has(id) ? plan.state.locked.filter((l) => l !== id) : [...plan.state.locked, id],
   })
 
-  // Rule 12: replaces only the swiped item and keeps the locks.
-  function swipe(id: ItemId, step: 1 | -1) {
-    const { itemIds, locked } = plan.state
-    const result = swipeItem({ items, settings, forecast, date, outfit: itemIds, locked, dislikes: dislikeKeys }, id, step)
-    setSwipeNote(result.ok ? undefined : result.message)
+  // Rule 12: the carousel settled on another item for that slot. Only it changes; locks stay.
+  const swipeInput = { items, settings, forecast, date, outfit: plan.state.itemIds, locked: plan.state.locked, dislikes: dislikeKeys }
+  function choose(from: ItemId, to: ItemId) {
     setPickNotes([])
-    if (result.ok && !sameIds(result.itemIds, itemIds)) return saveToday(db, { date, itemIds: result.itemIds, locked })
+    const { itemIds, locked } = plan.state
+    if (from !== to) return saveToday(db, { date, itemIds: itemIds.map((id) => (id === from ? to : id)), locked })
   }
 
   async function dislike() {
@@ -208,22 +205,24 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
 
       {shown.length > 0 ? (
         <>
-          <ul className="outfit">
+          <ul className="looks">
             {shown.map((item) => (
-              <OutfitItem key={item.id} item={item} locked={locked.has(item.id)} onSwipe={(step) => swipe(item.id, step)}>
-                <button aria-pressed={locked.has(item.id)} onClick={() => toggleLock(item.id)}>
-                  {locked.has(item.id) ? '🔒 Locked' : '🔓 Lock'}
-                </button>
-                <button onClick={() => skipToday(db, item.id, date)}>Not today</button>
-                <button onClick={() => setInHamper(db, item.id, true)}>→ Hamper</button>
-              </OutfitItem>
+              <SlotCarousel
+                key={item.category} // one per slot, so the carousel stays put while its item changes
+                item={item}
+                choices={locked.has(item.id) ? [item] : slotChoices(swipeInput, item.id)}
+                locked={locked.has(item.id)}
+                onChoose={(id) => choose(item.id, id)}
+                onToggleLock={() => toggleLock(item.id)}
+                onSkip={() => skipToday(db, item.id, date)}
+                onHamper={() => setInHamper(db, item.id, true)}
+              />
             ))}
           </ul>
           <ul className="notes">
             {pickNotes.map((n) => <li key={n}>{n}</li>)}
             {noCoat && <li>{NO_COAT}</li>}
-            {swipeNote && <li>{swipeNote}</li>}
-            {pickNotes.length === 0 && !noCoat && !swipeNote && <li className="hint">Swipe an item to change just that one.</li>}
+            {pickNotes.length === 0 && !noCoat && <li className="hint">Swipe a piece to change just that one.</li>}
           </ul>
           <div className="outfit-bar">
             <button onClick={dislike} aria-label="Never show this outfit again">👎</button>
@@ -273,41 +272,76 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   )
 }
 
-const SWIPE_PX = 50
+const SETTLE_MS = 120 // a carousel counts as settled this long after its last scroll event
 
-// One item of the outfit. A horizontal swipe of 50px or more changes it: left for the
-// next choice, right for the previous one (DESIGN §5 rule 12). `touch-action: pan-y` in
-// the CSS leaves vertical scrolling to the browser. A locked item doesn't swipe.
-function OutfitItem({ item, locked, onSwipe, children }: {
-  item: Item; locked: boolean; onSwipe: (step: 1 | -1) => void; children: ReactNode
+// One slot of the outfit as a carousel of its choices (DESIGN §5 rule 12): a native
+// horizontal scroller that snaps a photo at a time and follows the finger. When it
+// settles on another item, that item replaces this one. The lock sits in the photo's
+// top-right corner; a locked slot shows only its item and doesn't scroll.
+function SlotCarousel({ item, choices, locked, onChoose, onToggleLock, onSkip, onHamper }: {
+  item: Item; choices: Item[]; locked: boolean
+  onChoose: (id: ItemId) => void; onToggleLock: () => void; onSkip: () => void; onHamper: () => void
 }) {
-  const start = useRef<{ x: number; y: number }>(undefined)
-  const swipedAt = useRef(-Infinity)
+  const track = useRef<HTMLDivElement>(null)
+  const at = Math.max(0, choices.findIndex((c) => c.id === item.id))
+  const ids = choices.map((c) => c.id).join(',')
+  // Where the finger has scrolled to, only for this item and these choices: when either
+  // changes, the outfit's item is in view again.
+  const view = `${at}|${ids}`
+  const [scrolled, setScrolled] = useState<{ view: string; n: number }>()
+  const inView = scrolled?.view === view ? scrolled.n : at
+  const settle = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  const onPointerUp = (e: PointerEvent) => {
-    if (!start.current) return
-    const dx = e.clientX - start.current.x, dy = e.clientY - start.current.y
-    start.current = undefined
-    if (locked || Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return
-    swipedAt.current = e.timeStamp
-    onSwipe(dx < 0 ? 1 : -1)
+  // Shows the outfit's item, without animating, whenever it or the choices change.
+  useLayoutEffect(() => {
+    const el = track.current
+    if (el) el.scrollLeft = at * el.clientWidth
+  }, [at, ids])
+  useEffect(() => () => clearTimeout(settle.current), [])
+
+  const onScroll = () => {
+    const el = track.current!
+    if (!el.clientWidth) return // mid-layout: 0/0 would make the index NaN
+    const n = Math.min(choices.length - 1, Math.max(0, Math.round(el.scrollLeft / el.clientWidth)))
+    setScrolled({ view, n })
+    clearTimeout(settle.current)
+    settle.current = setTimeout(() => { if (choices[n].id !== item.id) onChoose(choices[n].id) }, SETTLE_MS)
   }
 
+  const shown = choices[inView] ?? item
   return (
-    <li
-      className={`outfit-item ${locked ? 'locked' : ''}`}
-      onPointerDown={(e) => { start.current = { x: e.clientX, y: e.clientY } }}
-      onPointerUp={onPointerUp}
-      onPointerCancel={() => { start.current = undefined }}
-      // A swipe that started on a button mustn't also press it.
-      onClickCapture={(e) => { if (e.timeStamp - swipedAt.current < 500) { e.preventDefault(); e.stopPropagation() } }}
-    >
-      <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
-      <div className="outfit-body">
-        <span className="outfit-name">{item.name}</span>
-        <div className="outfit-actions">{children}</div>
+    <li className={`look ${locked ? 'locked' : ''}`}>
+      <div className="look-photo">
+        <div className="look-track" ref={track} onScroll={locked ? undefined : onScroll}>
+          {choices.map((c) => (
+            <div key={c.id} className="look-slide">
+              <StoredPhoto itemId={c.id} color={c.color} alt={c.name} />
+            </div>
+          ))}
+        </div>
+        <button className="look-lock" aria-pressed={locked} aria-label={locked ? `Unlock ${item.name}` : `Lock ${item.name}`} onClick={onToggleLock}>
+          <LockIcon closed={locked} />
+        </button>
+        {choices.length > 1 && <span className="look-count">{inView + 1}/{choices.length}</span>}
+      </div>
+      <div className="look-caption">
+        {shown.brand && <span className="look-brand">{shown.brand}</span>}
+        <span className="look-name">{shown.name}</span>
+        <span className="look-actions">
+          <button className="link" onClick={onSkip}>Not today</button>
+          <button className="link" onClick={onHamper}>Hamper</button>
+        </span>
       </div>
     </li>
+  )
+}
+
+function LockIcon({ closed }: { closed: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <rect x="5" y="11" width="14" height="10" />
+      <path d={closed ? 'M8 11V7a4 4 0 0 1 8 0v4' : 'M8 11V7a4 4 0 0 1 7.5-1.9'} />
+    </svg>
   )
 }
 

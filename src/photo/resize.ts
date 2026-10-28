@@ -6,7 +6,7 @@ export const MAX_SIDE = 800
 const JPEG_QUALITY = 0.82
 const COLOR_SAMPLE_SIDE = 32
 
-function loadImage(file: Blob): Promise<HTMLImageElement> {
+export function loadImage(file: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
     const img = new Image()

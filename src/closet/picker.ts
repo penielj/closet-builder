@@ -121,17 +121,15 @@ export interface SwipeInput extends Omit<PickInput, 'current' | 'random'> {
   outfit: ItemId[] // the outfit on screen, coat included
 }
 
-export type SwipeResult = { ok: true; itemIds: ItemId[] } | { ok: false; message: string }
-
 const SINGULAR: Record<Item['category'], string> = { top: 'top', bottom: 'bottom', dress: 'dress', shoes: 'pair of shoes', outerwear: 'coat' }
 
-// Rule 12: replaces only `itemId`, stepping through its slot's choices in the order they
-// were added. step 1 is a swipe left (next), -1 a swipe right (previous).
-export function swipeItem(input: SwipeInput, itemId: ItemId, step: 1 | -1): SwipeResult {
+// Rule 12's choices for the slot `itemId` is in, in the order they were added, `itemId`
+// included: what Today's carousel for that slot shows. Empty if `itemId` isn't an item.
+export function slotChoices(input: SwipeInput, itemId: ItemId): Item[] {
   const { items, settings, forecast, date, outfit } = input
   const byId = new Map(items.map((i) => [i.id, i]))
   const swiped = byId.get(itemId)
-  if (!swiped || input.locked.includes(itemId)) return { ok: true, itemIds: outfit } // a locked item doesn't swipe
+  if (!swiped) return []
 
   const fitsDay = fitsDayFor(settings, date)
   const target = forecast && targetWarmth(feelsLike(forecast.high, settings.comfortOffset))
@@ -144,14 +142,9 @@ export function swipeItem(input: SwipeInput, itemId: ItemId, step: 1 | -1): Swip
     const base = [...restBase, c]
     return goesTogether(base) && !input.dislikes.has(outfitKey(base.map((i) => i.id)))
   }
-  const choices = items
+  return items
     .filter((c) => c.category === swiped.category && (c.id === itemId || fits(c)))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
-
-  if (choices.length < 2) return { ok: false, message: `No other ${SINGULAR[swiped.category]} fits.` }
-  const at = choices.findIndex((c) => c.id === itemId)
-  const next = choices[(at + step + choices.length) % choices.length]
-  return { ok: true, itemIds: outfit.map((id) => (id === itemId ? next.id : id)) }
 }
 
 // Rules 5–7: every top + bottom (or dress) + shoes, with locked items forced into their slot.

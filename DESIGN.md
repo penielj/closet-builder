@@ -17,19 +17,19 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
 
 **A. First run.** A welcome screen says "Add the ~20 things you actually wear." A progress meter shows what the picker needs: at least 3 tops, 2 bottoms and 1 pair of shoes, where a dress counts as both a top and a bottom. Today unlocks once that's met. On an iPhone, in Safari rather than the installed app, a banner says: "Add to Home Screen before you start. What you add in Safari stays in Safari."
 
-**B. Add an item.** Take or choose a photo. The app resizes it and pre-selects its color. For a clean white background, use an iPhone cutout: in Photos, touch and hold the clothing, then Share the lifted subject and save it as an image, and choose that image here. The app fills the cut-out area with white. Fill in the name, category, pattern, occasions, seasons, warmth and an optional brand, then save.
+**B. Add an item.** Take or choose a photo of the garment laid flat or hung up. The app cuts the garment out onto white (§4, "Cutout"), resizes it and pre-selects its color. While the cutout runs, the form shows its progress (the first one also downloads the model) and a **Use photo as is** button that skips it. A **Cut out the background** checkbox turns it off, remembered on this phone. An iPhone cutout (touch and hold the clothing in Photos, share the lifted subject, save it) still works: its transparent area is filled with white. Fill in the name, category, pattern, occasions, seasons, warmth and an optional brand, then save.
 
 **C. Today.**
 - **Location.** The first time Today opens, the app asks for geolocation. If that's denied or fails, Today shows a city box instead of an outfit. After that the saved location is used every day. The weather line has a **Change** link that asks for geolocation again or takes a new city.
 - **Weather.** The app waits up to 5 seconds for today's forecast, then shows the outfit with or without it (§5, "No weather"). The weather line shows the actual high and low, not the comfort-adjusted ones, plus the chance of rain.
 - **Occasion.** A row of the four occasions, with the one from last time selected. Changing it picks a new outfit, keeping locked items.
-- **The outfit.** The app shows one outfit. On it you can:
-  - **🔒 Lock** an item so it stays when you shuffle.
-  - Mark an item **Not today**, which excludes it until midnight. In the Closet tab it's dimmed with a **Wear today** button that undoes it.
-  - Send an item **→ Hamper**.
+- **The outfit.** The app shows one outfit as stacked looks, like a store's outfit page: each piece is a full-width photo on white with its brand and name under it, top first, then bottom (or dress), shoes and coat. On it you can:
+  - **Swipe** a piece's photo sideways to change only that piece (§5, rule 12). The photo follows the finger and snaps to the next choice, and a counter ("2/4") shows where you are.
+  - **Lock** a piece with the lock icon in its photo's top-right corner, so it stays when you shuffle. A locked piece doesn't swipe.
+  - Mark a piece **Not today**, which excludes it until midnight. In the Closet tab it's dimmed with a **Wear today** button that undoes it.
+  - Send a piece to the **Hamper**.
   - Tap **👎** to never see this outfit again. A new outfit is picked straight away.
   - Tap **Shuffle** for a new outfit.
-  - **Swipe** an item left or right to change only that item (§5, rule 12).
 
 **Today's outfit stays put.** The picked outfit and its locks are saved for the day, so reopening the app shows the same outfit. A new outfit is picked, keeping locked items, only when:
 - you tap Shuffle or 👎, or change the occasion (a swipe changes only the swiped item)
@@ -38,9 +38,9 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
 
 Editing an item doesn't trigger a new pick, even if the item would no longer fit.
 
-**D. Hamper.** Any item can go **→ Hamper**, and hamper items are never suggested. The top bar shows "🧺 7 in hamper". **Laundry done** returns everything at once.
+**D. Hamper.** Any item can go **→ Hamper**, and hamper items are never suggested. The top bar shows "HAMPER (7)". **Laundry done** returns everything at once.
 
-**E. Settings.** Opened from a ⚙ button in the top bar. Step 2 builds it with **Comfort** and **Location**. Step 3 adds **Backup**:
+**E. Settings.** Opened from **SETTINGS** in the top bar. Step 2 builds it with **Comfort** and **Location**. Step 3 adds **Backup**:
 - **Export closet** builds one `.closet.json` file that includes the photos. **Save** then opens the phone's share sheet (or downloads the file on a desktop) so you can keep it in iCloud Drive or Google Drive. It's two taps because iPhones only open the share sheet straight after a tap.
 - **Import closet** picks a file. If the closet isn't empty, the app asks "Replace your 42 items with the 38 in this backup?", then replaces everything.
 - Settings shows "Last backup: 12 days ago · 9 changes since".
@@ -48,7 +48,9 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 ## 4. Features
 | Area | Feature |
 |---|---|
-| Closet | A photo grid filtered by category. Add, edit and delete items. Hamper items are dimmed. Photos are shown whole (not cropped), centered on a white tile with a little padding, in both themes, like a store's catalog. |
+| Look | A catalog look in the spirit of SSENSE: white page, black Helvetica, square corners, small uppercase labels, filters as underlined text, and every garment shown whole (not cropped) on a white tile, which stays white in dark mode. |
+| Closet | A photo grid filtered by category, each item with its brand (bold, uppercase) over its name. Add, edit and delete items. Hamper and Not today items are dimmed. |
+| Cutout | RMBG-1.4 (BRIA; free for non-commercial use) runs on the device through transformers.js: on the GPU at half precision (~88MB) when the phone has WebGPU, otherwise on the CPU at 8 bits (~44MB). The model predicts a mask at 1024×1024, and the photo gets that mask as its transparency before the usual resize fills it with white. The library comes from jsdelivr and is kept in Cache Storage, and the model is cached by the library, so after the first download it works offline. Any failure keeps the photo as it is, with a note (`src/photo/cutout.ts`). Worn clothes keep the person: the model keeps the subject. |
 | Photos | Taken with the camera or uploaded, then resized on the device to about 800px JPEG. That also removes EXIF data, including location. Transparent areas (an iPhone cutout) are filled with white, since JPEG has no transparency and would turn them black. The add-item form suggests laying the item flat on a white sheet in daylight. |
 | Auto-whiten | When the outer 5% of the photo is a plain, light surface (average level at least 150, channel spread at most 60, little variation), each channel is scaled so that surface becomes pure white, and anything at 235 or above after scaling becomes 255. That also takes out a warm cast from indoor light. Dark, colored or busy backgrounds, and already-white ones, are left alone (`src/photo/whiten.ts`). |
 | Auto color | Samples the center 50% of the photo and snaps the dominant color to the nearest palette color. Transparent pixels are skipped, so a cutout's background isn't counted. A whitened photo is sampled after the correction, so a warm cast doesn't turn white into beige. You can override it. |
@@ -89,10 +91,10 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
     - Locks can't be seen without an outfit, so the message lists the locked items, each with an **Unlock** button (phone test 1: the old message said "unlock an item" with no way to see which).
 11. **No weather:** if the forecast doesn't arrive (offline, no location yet, or the request fails), rule 4 and the coat are skipped, and the weather line says "No weather, so warmth isn't checked." A forecast already fetched today is reused without a new request.
 
-12. **Swipe:** swiping an item on Today replaces only that item, keeping the rest of the outfit and its locks.
-    - The choices are items of the same category that pass rules 1–4 (rule 4 only with a forecast), keep rules 6 and 7 with the rest of the outfit, and don't make a disliked outfit. A coat's choices pass rules 1–3 only, as in rule 9.
-    - They're ordered by when they were added, and the swiped item is among them. Swiping left goes to the next one, swiping right to the previous one, wrapping around.
-    - A locked item doesn't swipe. If nothing else fits, the item stays and the note says "No other {category} fits."
+12. **Swipe:** each piece on Today is a carousel of its slot's choices. Settling on another one replaces only that piece, keeping the rest of the outfit and its locks.
+    - The choices are items of the same category that pass rules 1–4 (rule 4 only with a forecast), keep rules 6 and 7 with the rest of the outfit, and don't make a disliked outfit. A coat's choices pass rules 1–3 only, as in rule 9. They're worked out again whenever the outfit changes, so changing the top can change what the bottom offers.
+    - They're ordered by when they were added, and the piece on screen is among them. The carousel is a native horizontal scroller that snaps one photo at a time (no wrapping), and a choice counts once the scrolling has stopped for 120ms.
+    - A locked piece shows only itself and doesn't scroll. With nothing else to choose, the carousel has one photo and no counter.
     - The new outfit is saved for the day like any other pick. Swiping isn't a real change, so it doesn't count toward the backup reminder.
 
 An outfit's identity (its `key`) is its top, bottom or dress plus its shoes, **not** the coat. That way a disliked outfit doesn't come back just because the coat changed. 👎 saves only those IDs.
@@ -170,7 +172,9 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
      - no crash or reload
    - If spike 0.3 passes, step 5 builds it in: the category is pre-selected from the photo the way the color is, and you can change it. If it fails, the form starts on the last category used instead.
    - **Catalog look:** whole photos on white tiles and auto-whiten (§4).
-   - **Spike 0.4, background removal:** RMBG-1.4 on the same spike page and library, in the same session as 0.3, on 20 photos of clothes laid flat or hung on ordinary backgrounds. Pass: at least 16 rated Good, under 5 seconds per photo, no crash or reload. Its license allows non-commercial use only, which fits a personal app. Criteria and the Mac numbers are in `spikes/RESULTS.md`. If it passes, Add item removes the background automatically, and the total download for both models gets decided with both results in hand.
+   - **Spike 0.4, background removal:** RMBG-1.4 on the same spike page and library, in the same session as 0.3, on 20 photos of clothes laid flat or hung on ordinary backgrounds. Pass: at least 16 rated Good, under 5 seconds per photo, no crash or reload. Its license allows non-commercial use only, which fits a personal app. Criteria and the Mac numbers are in `spikes/RESULTS.md`.
+   - **Cutout in Add item, built before spike 0.4 ran** (2026-10-28, by choice): the SSENSE look needs it, and it falls back to the plain photo on any failure, with a **Use photo as is** button for a slow one. Spike 0.4 still decides whether it stays on by default and which device it prefers; the total download with category recognition gets decided with both results in hand.
+   - **SSENSE look** (§4 "Look") and the swipe carousel on Today (rule 12), replacing the 50px swipe gesture, which had no feedback while dragging.
 
 ## 9. Later, if it's missed
 Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules.
@@ -187,6 +191,6 @@ Liked outfits · color modes (tonal, complementary) · automatic dirty tracking 
   - no forecast: warmth and coat skipped
 - **Today's outfit:** reopening the same day keeps it, a new day re-picks and clears locks, and sending a shown item to the hamper re-picks while keeping locks.
 - **Backup round trip:** export → import gives back identical items, photos and dislikes, and `today` is cleared. A truncated or wrong-version file changes nothing.
-- **Swipe:** left and right step through the slot's choices and wrap around, a locked item doesn't swipe, choices keep rules 6 and 7 and skip dislikes, and the "No other {category} fits" note.
+- **Slot choices (swipe carousel):** ordered by when items were added with the shown one included, rules 1–4 applied (warmth only with a forecast), rules 6 and 7 kept with the rest of the outfit, dislikes skipped, coats by rules 1–3 only, and just the item when nothing else fits.
 - **Manual (phone test):** install on a phone, catalog 20 items, check a cold day and a warm day, deny geolocation and type a city, open it offline, use the hamper, then delete the app, reinstall and import a backup.
-  - **Phone test 2 adds:** after Laundry done and "Take out", items leave the hamper at once and keep their photos, without reopening the app. Existing photos survive the update to database version 3. A cutout photo saves with a white background and the right auto color. Swipe works on each slot. Run spike 0.3 in the same session.
+  - **Phone test 2 adds:** after Laundry done and "Take out", items leave the hamper at once and keep their photos, without reopening the app. Existing photos survive the update to database version 3. A cutout photo saves with a white background and the right auto color. Each piece's carousel follows the finger, settles on a choice and saves it, and a locked piece doesn't move. Adding an item cuts the garment out onto white: note how long the first one (with the download) and later ones take, and whether **Use photo as is** works. Run spikes 0.3 and 0.4 in the same session.

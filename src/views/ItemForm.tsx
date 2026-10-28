@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useMemo, useRef, useState } from 'react'
 import Photo from '../components/Photo'
 import { db } from '../db'
 import { addItem, deleteItem, updateItem } from '../db/repo'
@@ -8,11 +8,18 @@ import {
   CATEGORIES, CATEGORY_LABELS, OCCASIONS, PALETTE, PATTERNS, SEASONS, WARMTHS, WARMTH_LABELS,
   type Category, type Occasion, type PaletteColor, type Pattern, type Season, type Warmth, label,
 } from '../db/values'
-import { processPhoto } from '../photo/resize'
+import { cutout } from '../photo/cutout'
+import { loadImage, processPhoto } from '../photo/resize'
 
 interface Props { item?: Item; items: Item[]; onDone: () => void }
 
 const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
+const mb = (n: number) => `${Math.round(n / 1048576)}MB`
+
+// A per-device convenience, so storage that's blocked or cleared just means the default.
+const CUTOUT_PREF = 'closet.cutout'
+const readPref = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
+const writePref = (key: string, value: string) => { try { localStorage.setItem(key, value) } catch { /* default next time */ } }
 
 export default function ItemForm({ item, items, onDone }: Props) {
   const [name, setName] = useState(item?.name ?? '')
@@ -39,12 +46,39 @@ export default function ItemForm({ item, items, onDone }: Props) {
     return [...seen.values()].sort((a, b) => a.localeCompare(b))
   }, [items])
 
+  // Cutout (DESIGN §4): the garment is cut out onto white before the usual resize. It can
+  // be turned off, and "Use photo as is" skips a slow one. `run` numbers each photo picked,
+  // so a cutout that finishes after being skipped or replaced is dropped.
+  const [cutOut, setCutOut] = useState(() => readPref(CUTOUT_PREF) !== 'off')
+  const [cutting, setCutting] = useState<{ file: File; text: string }>()
+  const [photoNote, setPhotoNote] = useState<string>()
+  const run = useRef(0)
+
   async function onPhoto(file?: File) {
     if (!file) return
-    setBusy(true)
+    const n = ++run.current
     setError(undefined)
+    setPhotoNote(undefined)
+    if (!cutOut) return applyPhoto(file, n)
+    setCutting({ file, text: 'Cutting out the background…' })
+    let cut: Blob | undefined
     try {
-      const result = await processPhoto(file)
+      const onProgress = (loaded: number, total: number) => {
+        if (n === run.current) setCutting({ file, text: `Downloading the cutout model, just this once: ${mb(loaded)} of ${mb(total)}…` })
+      }
+      cut = await cutout(await loadImage(file), onProgress)
+    } catch (e) {
+      if (n === run.current) setPhotoNote(`Couldn't cut out the background (${(e as Error).message}), so the photo is used as is.`)
+    }
+    if (n === run.current) await applyPhoto(cut ?? file, n)
+  }
+
+  async function applyPhoto(source: Blob, n: number) {
+    setCutting(undefined)
+    setBusy(true)
+    try {
+      const result = await processPhoto(source)
+      if (n !== run.current) return
       setNewPhoto(result.photo)
       if (result.color && !colorTouched) setColor(result.color)
     } catch (e) {
@@ -52,6 +86,13 @@ export default function ItemForm({ item, items, onDone }: Props) {
     } finally {
       setBusy(false)
     }
+  }
+
+  const skipCutout = () => { if (cutting) applyPhoto(cutting.file, ++run.current) }
+
+  const toggleCutOut = (on: boolean) => {
+    setCutOut(on)
+    writePref(CUTOUT_PREF, on ? 'on' : 'off')
   }
 
   async function onSubmit(e: FormEvent) {
@@ -84,7 +125,7 @@ export default function ItemForm({ item, items, onDone }: Props) {
       <header className="topbar">
         <button type="button" onClick={onDone}>Cancel</button>
         <h1>{item ? 'Edit item' : 'Add item'}</h1>
-        <button type="submit" className="primary" disabled={busy}>Save</button>
+        <button type="submit" className="primary" disabled={busy || !!cutting}>Save</button>
       </header>
 
       <div className="photo-picker">
@@ -93,11 +134,21 @@ export default function ItemForm({ item, items, onDone }: Props) {
           {photo ? 'Change photo' : 'Take or choose photo'}
           <input type="file" accept="image/*" hidden onChange={(e) => onPhoto(e.target.files?.[0])} />
         </label>
-        {photo && <button type="button" onClick={() => setNewPhoto(null)}>Remove photo</button>}
-        {!photo && (
+        {photo && !cutting && <button type="button" onClick={() => setNewPhoto(null)}>Remove photo</button>}
+        {cutting && (
+          <>
+            <p className="muted photo-status" role="status">{cutting.text}</p>
+            <button type="button" onClick={skipCutout}>Use photo as is</button>
+          </>
+        )}
+        {photoNote && <p className="muted photo-status">{photoNote}</p>}
+        <label className="check">
+          <input type="checkbox" checked={cutOut} onChange={(e) => toggleCutOut(e.target.checked)} />
+          Cut out the background
+        </label>
+        {!photo && !cutting && (
           <p className="muted photo-tip">
-            Lay it flat on a white sheet in daylight and shoot from above: the app turns the sheet pure white.
-            For a perfect cut-out, touch and hold the clothing in Photos, share the lifted subject, save it, and choose it here.
+            Lay it flat or hang it up, so only the garment is in the photo. The first cutout downloads the model once (about 45–90MB).
           </p>
         )}
       </div>

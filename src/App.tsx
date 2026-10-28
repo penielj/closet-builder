@@ -65,14 +65,13 @@ export default function App() {
             onClick={() => setView(view === 'hamper' ? 'today' : 'hamper')}
             aria-label={`${inHamper} items in the hamper`}
           >
-            🧺 {inHamper} in hamper
+            Hamper ({inHamper})
           </button>
           <button
-            className={`badge icon ${view === 'settings' ? 'active' : ''}`}
+            className={`badge ${view === 'settings' ? 'active' : ''}`}
             onClick={() => setView(view === 'settings' ? 'today' : 'settings')}
-            aria-label="Settings"
           >
-            ⚙
+            Settings
           </button>
         </div>
       </header>

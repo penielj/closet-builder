@@ -1,31 +1,31 @@
+/* A catalog look in the spirit of SSENSE: white page, black Helvetica, square corners,
+   small uppercase labels, and garments on white. Photo tiles stay white in dark mode. */
 :root {
-  --bg: #f7f6f3;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --text: #1c1c1a;
-  --muted: #6d6b66;
-  --line: #e2e0da;
-  --accent: #1c1c1a;
+  --text: #000000;
+  --muted: #737373;
+  --line: #e5e5e5;
+  --accent: #000000;
   --accent-text: #ffffff;
-  --chip-on: #1c1c1a;
-  --chip-on-text: #ffffff;
   --danger: #b3261e;
   --ok: #1e7a3c;
-  --radius: 12px;
-  --tab-height: 56px;
+  --tile: #ffffff; /* behind every garment photo, in both themes */
+  --on-tile: #000000;
+  --on-tile-muted: #737373;
+  --tab-height: 52px;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #151514;
-    --surface: #1f1f1d;
-    --text: #f1efea;
-    --muted: #a19e97;
-    --line: #34332f;
-    --accent: #f1efea;
-    --accent-text: #151514;
-    --chip-on: #f1efea;
-    --chip-on-text: #151514;
+    --bg: #000000;
+    --surface: #0d0d0d;
+    --text: #ffffff;
+    --muted: #a3a3a3;
+    --line: #2a2a2a;
+    --accent: #ffffff;
+    --accent-text: #000000;
     --danger: #f2b8b5;
     --ok: #7fd49a;
     color-scheme: dark;
@@ -38,7 +38,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font: 15px/1.4 'Helvetica Neue', Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -47,18 +47,25 @@ button, .button, input {
   color: inherit;
 }
 
+/* Small uppercase labels: buttons, tabs, filters, captions. */
+button, .button, .chip, .tabs button, .look-brand, .look-actions, .card-action, .topbar h1, .badge, .weather, legend, .field > span:first-child {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 button, .button {
   display: inline-block;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  padding: 12px 16px;
+  border: 1px solid var(--text);
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
   text-align: center;
+  font-size: 12px;
 }
-button:disabled, .button.disabled { opacity: 0.5; }
+button:disabled, .button.disabled { opacity: 0.4; }
 button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
+button.danger { color: var(--danger); border-color: var(--danger); width: 100%; margin-top: 24px; }
 
 .app {
   max-width: 720px;
@@ -74,12 +81,13 @@ button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: calc(12px + env(safe-area-inset-top)) 0 12px;
+  padding: calc(14px + env(safe-area-inset-top)) 0 14px;
   background: var(--bg);
 }
-.topbar h1 { font-size: 22px; margin: 0; }
-.badge { font-size: 14px; padding: 6px 12px; border-radius: 999px; }
-.badge.active { background: var(--chip-on); color: var(--chip-on-text); }
+.topbar h1 { font-size: 14px; font-weight: 700; margin: 0; letter-spacing: 0.12em; }
+.topbar-actions { display: flex; gap: 16px; }
+.badge { font-size: 11px; padding: 4px 0; border: 0; color: var(--muted); }
+.badge.active { color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
 
 .tabs {
   position: fixed;
@@ -88,33 +96,37 @@ button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
   display: flex;
   height: calc(var(--tab-height) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  background: var(--surface);
+  background: var(--bg);
   border-top: 1px solid var(--line);
 }
-.tabs button { flex: 1; border: 0; border-radius: 0; background: none; color: var(--muted); }
-.tabs button.active { color: var(--text); font-weight: 600; }
+.tabs button { flex: 1; border: 0; font-size: 11px; color: var(--muted); }
+.tabs button.active { color: var(--text); font-weight: 700; }
 
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
   padding: 16px;
 }
-.panel h2 { margin: 0 0 4px; }
-.panel h3 { margin: 16px 0 8px; font-size: 15px; }
-.muted { color: var(--muted); font-size: 14px; }
+.panel h2 { margin: 0 0 6px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
+.panel h3 { margin: 16px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.muted { color: var(--muted); font-size: 13px; }
 .empty { text-align: center; padding: 32px 0; }
 .error { color: var(--danger); }
 .ok { color: var(--ok); }
 
-.meter { margin-bottom: 10px; }
-.meter-row { display: flex; justify-content: space-between; font-size: 14px; }
-.meter-track { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.meter { margin-bottom: 12px; }
+.meter-row { display: flex; justify-content: space-between; font-size: 13px; }
+.meter-track { height: 2px; background: var(--line); margin-top: 4px; }
 .meter-fill { height: 100%; background: var(--accent); transition: width 0.2s; }
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 12px; }
-.chip { padding: 6px 12px; border-radius: 999px; font-size: 14px; }
-.chip.on { background: var(--chip-on); color: var(--chip-on-text); border-color: var(--chip-on); }
+/* Filters (occasion, category): underlined text, as on a store's category bar. */
+.chips { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 4px 0 14px; }
+.chip { padding: 6px 0; border: 0; font-size: 11px; color: var(--muted); }
+.chip.on { color: var(--text); text-decoration: underline; text-underline-offset: 5px; }
+/* In the form they're toggles, so they read as boxes. */
+.form .chips { gap: 6px; }
+.form .chip { padding: 8px 12px; border: 1px solid var(--line); color: var(--text); }
+.form .chip.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); text-decoration: none; }
 
 .grid {
   list-style: none;
@@ -122,82 +134,78 @@ button.danger { color: var(--danger); width: 100%; margin-top: 24px; }
   padding: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 28px 12px;
 }
 @media (min-width: 480px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 680px) { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
-.card {
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.card.dirty .photo, .card.dirty .card-name { opacity: 0.4; } /* the action button stays readable */
-.card-open { padding: 0; border: 0; border-radius: 0; background: none; text-align: left; }
-.card-name { display: block; padding: 8px 10px 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-action { margin: 8px 10px 10px; padding: 6px; font-size: 13px; }
+.card { display: flex; flex-direction: column; }
+.card.dirty .photo, .card.dirty .card-text { opacity: 0.35; } /* the action stays readable */
+.card-open { padding: 0; border: 0; text-align: left; text-transform: none; letter-spacing: normal; font-size: inherit; }
+.card-text { display: block; padding-top: 10px; }
+.card-brand { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.card-name { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-action { align-self: flex-start; margin-top: 6px; padding: 0; border: 0; font-size: 10px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
 
 .photo { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
-/* Catalog tiles: the whole garment, centered on white in both themes, like a store's site. */
-img.photo { object-fit: contain; background: #ffffff; padding: 6%; }
-/* A color dot on a neutral tile, so black and white items stay visible in both themes. */
-.placeholder { display: grid; place-items: center; background: var(--bg); border-bottom: 1px solid var(--line); }
-.placeholder-dot { width: 42%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 2px var(--muted); }
+/* Catalog tiles: the whole garment, centered on white. */
+img.photo { object-fit: contain; background: var(--tile); padding: 8%; }
+/* A color dot on a light tile, so black and white items stay visible in both themes. */
+.placeholder { display: grid; place-items: center; background: #f4f4f4; }
+.placeholder-dot { width: 36%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 1px var(--on-tile-muted); }
 
 .fab {
   position: fixed;
   right: max(16px, calc(50% - 344px));
   bottom: calc(var(--tab-height) + 16px + env(safe-area-inset-bottom));
   z-index: 3;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+  width: 52px;
+  height: 52px;
   padding: 0;
-  font-size: 28px;
+  font-size: 26px;
+  font-weight: 300;
   line-height: 1;
   background: var(--accent);
   color: var(--accent-text);
   border: 0;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.2);
 }
 
 .list { list-style: none; margin: 16px 0 0; padding: 0; }
-.row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.row .photo { width: 56px; border-radius: 8px; }
+.row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.row .photo { width: 56px; padding: 4%; }
 .row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-why { display: block; white-space: normal; }
+.row button { padding: 8px 12px; }
 
 .form { max-width: 720px; margin: 0 auto; padding: 0 16px calc(32px + env(safe-area-inset-bottom)); }
-.form fieldset { border: 0; margin: 0; padding: 0; }
-.form legend { font-weight: 600; font-size: 15px; padding: 0; }
-.field { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 15px; margin-bottom: 12px; }
+.form fieldset { border: 0; margin: 0 0 6px; padding: 0; }
+.form legend { font-weight: 700; font-size: 11px; padding: 0; margin-bottom: 4px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.field > span:first-child, .field { font-size: 11px; font-weight: 700; }
 .field input {
   font-weight: 400;
   font-size: 16px; /* 16px stops iOS zooming in on focus */
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--text);
+  border-radius: 0;
+  background: transparent;
 }
-.photo-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+.field input:focus { outline: none; border-bottom-width: 2px; }
+.photo-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 20px; }
 .photo-tip { flex-basis: 100%; margin: 0; }
-.photo-picker .photo { width: 120px; border-radius: var(--radius); border: 1px solid var(--line); }
+.photo-picker .photo { width: 100%; max-width: 360px; border: 1px solid var(--line); }
+.photo-status { flex-basis: 100%; margin: 0; font-size: 12px; }
 .swatches { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 8px; padding: 4px 0; max-width: 420px; }
 .swatch { aspect-ratio: 1; padding: 0; border-radius: 50%; border: 1px solid var(--line); }
-.swatch.on { outline: 3px solid var(--text); outline-offset: 2px; }
-
-.topbar-actions { display: flex; gap: 6px; }
+.swatch.on { outline: 2px solid var(--text); outline-offset: 2px; }
 
 .banner {
   margin: 0 0 12px;
   padding: 10px 14px;
-  border-radius: var(--radius);
-  background: var(--chip-on);
-  color: var(--chip-on-text);
-  font-size: 14px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 13px;
 }
 
 .banner.failure {
@@ -215,35 +223,52 @@ img.photo { object-fit: contain; background: #ffffff; padding: 6%; }
 .app > .banner.failure { margin: 8px 0; }
 .banner.failure .link { color: inherit; flex-shrink: 0; }
 
-button.link { padding: 0; border: 0; background: none; text-decoration: underline; font-size: 14px; }
+button.link { padding: 0; border: 0; background: none; text-decoration: underline; text-underline-offset: 3px; font-size: 11px; }
 .row-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .location .city { margin-bottom: 8px; }
 .location .city .primary { width: 100%; }
 
-.today > * + * { margin-top: 4px; }
-.weather { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; font-size: 15px; }
+.weather { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 6px; font-size: 11px; color: var(--muted); }
 
-.outfit { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.outfit-item {
+/* Today: the outfit as stacked looks, each a carousel of its slot's choices (DESIGN §5 rule 12). */
+.looks { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 28px; }
+.look-photo { position: relative; }
+.look-track {
   display: flex;
-  gap: 12px;
-  padding: 10px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
-.outfit-item { touch-action: pan-y; user-select: none; -webkit-user-select: none; } /* horizontal swipes go to the app */
-.outfit-item.locked { border-color: var(--text); }
-.outfit-item .photo { width: 96px; flex-shrink: 0; border-radius: 8px; }
-.outfit-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
-.outfit-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.outfit-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.outfit-actions button { padding: 6px 10px; font-size: 13px; }
-.outfit-actions button[aria-pressed='true'] { background: var(--chip-on); color: var(--chip-on-text); border-color: var(--chip-on); }
+.look-track::-webkit-scrollbar { display: none; }
+.look.locked .look-track { overflow-x: hidden; }
+.look-slide { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; }
+.look-slide .photo { padding: 10%; }
+.look-lock {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 8px;
+  border: 0;
+  color: var(--on-tile-muted);
+  line-height: 0;
+}
+.look-lock[aria-pressed='true'] { color: var(--on-tile); }
+.look-count { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: var(--on-tile-muted); letter-spacing: 0.06em; }
+.look-caption { display: flex; flex-direction: column; gap: 2px; padding-top: 10px; }
+.look-brand { font-size: 11px; font-weight: 700; }
+.look-name { font-size: 14px; }
+.look-actions { display: flex; gap: 18px; margin-top: 6px; }
+.look-actions .link { color: var(--muted); font-size: 10px; }
 
-.notes { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
-.outfit-bar { display: flex; gap: 8px; margin-top: 14px; }
+.notes { list-style: none; margin: 20px 0 0; padding: 0; color: var(--muted); font-size: 12px; }
+.notes li + li { margin-top: 4px; }
+.outfit-bar { display: flex; gap: 8px; margin-top: 18px; }
 .outfit-bar .primary { flex: 1; }
 
 .settings { display: flex; flex-direction: column; gap: 12px; }
-.badge.icon { font-size: 18px; line-height: 1; padding: 6px 10px; }
+.check { display: flex; align-items: center; gap: 8px; flex-basis: 100%; font-size: 13px; }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.field { text-transform: uppercase; letter-spacing: 0.06em; }
+.field input { text-transform: none; letter-spacing: normal; }

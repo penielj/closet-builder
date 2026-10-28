@@ -34,7 +34,10 @@ export default function Closet({ items, onAdd, onEdit }: Props) {
                 <li key={item.id} className={`card ${item.inHamper || skipped ? 'dirty' : ''}`}>
                   <button className="card-open" onClick={() => onEdit(item)} aria-label={`Edit ${item.name}`}>
                     <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
-                    <span className="card-name">{item.name}</span>
+                    <span className="card-text">
+                      {item.brand && <span className="card-brand">{item.brand}</span>}
+                      <span className="card-name">{item.name}</span>
+                    </span>
                   </button>
                   {/* Not today is undone here (or on Today's "nothing fits" screen). */}
                   {skipped && !item.inHamper
