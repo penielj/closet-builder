@@ -95,7 +95,18 @@ export function pickOutfit(input: PickInput): PickResult {
   const notes: string[] = []
   const fresh = options.filter((c) => outfitKey(c.map((i) => i.id)) !== input.current)
   if (fresh.length === 0) notes.push(ONLY_OUTFIT)
-  else options = fresh
+  else {
+    // A new pick changes as much as it can: keep the outfits that share the fewest unlocked
+    // items with the one on screen. An item in every one of them is the only choice for its slot.
+    const shown = new Set(input.current?.split('|').map(Number))
+    const lockedIds = new Set(locked.map((i) => i.id))
+    const kept = (c: Item[]) => c.filter((i) => shown.has(i.id) && !lockedIds.has(i.id))
+    const fewest = Math.min(...fresh.map((c) => kept(c).length))
+    options = fresh.filter((c) => kept(c).length === fewest)
+    for (const i of kept(fresh[0])) {
+      if (fresh.every((c) => c.includes(i))) notes.push(`${i.name} is the only ${SINGULAR[i.category]} that fits today.`)
+    }
+  }
   const base = options[Math.floor(random() * options.length)]
 
   const coat = pickCoat(items, locked, fitsDay, forecast, settings.comfortOffset, random)

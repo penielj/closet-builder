@@ -414,3 +414,32 @@ describe('why an item is out today (rule 10 screen)', () => {
     expect(whyNotFor({ ...settings, location: undefined }, DATE)(summer)).toBeUndefined() // no location: no season rule
   })
 })
+
+describe('shuffle changes as much as it can (rule 8)', () => {
+  it('prefers outfits that change every unlocked item', () => {
+    const [t1, t2, b1, b2, shoes] = [item('top'), item('top'), item('bottom'), item('bottom'), item('shoes')]
+    const s2 = item('shoes')
+    const items = [t1, t2, b1, b2, shoes, s2]
+    const current = outfitKey([t1.id, b1.id, shoes.id])
+    for (const k of allPicks({ items, current })) {
+      expect(k.split(',').map(Number)).toEqual([t2.id, b2.id, s2.id])
+    }
+  })
+
+  it("says when an item stays because it's the only one that fits", () => {
+    const tee = item('top', { name: 'Grey tee' })
+    const [b1, b2, shoes] = [item('bottom'), item('bottom'), item('shoes', { name: 'Sneakers' })]
+    const r = pick({ items: [tee, b1, b2, shoes, item('top', { seasons: ['summer'] })], current: outfitKey([tee.id, b1.id, shoes.id]) })
+    expect(r.ok && r.itemIds).toEqual([tee.id, b2.id, shoes.id])
+    expect(r.ok && r.notes).toEqual(['Grey tee is the only top that fits today.', 'Sneakers is the only pair of shoes that fits today.'])
+  })
+
+  it("doesn't mention locked items", () => {
+    const tee = item('top')
+    const [b1, b2, shoes] = [item('bottom'), item('bottom'), item('shoes')]
+    const s2 = item('shoes')
+    const r = pick({ items: [tee, item('top'), b1, b2, shoes, s2], locked: [tee.id], current: outfitKey([tee.id, b1.id, shoes.id]) })
+    expect(r.ok && r.itemIds).toEqual([tee.id, b2.id, s2.id])
+    expect(r.ok && r.notes).toEqual([])
+  })
+})

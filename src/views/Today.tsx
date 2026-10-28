@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { type PointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { localDate, planToday } from '../closet/daily'
 import {
-  NO_COAT, type NothingFits, ONLY_OUTFIT, coatWanted, fitsDayFor, isBase, pickOutfit, swipeItem, whyNotFor,
+  NO_COAT, type NothingFits, coatWanted, fitsDayFor, isBase, pickOutfit, swipeItem, whyNotFor,
 } from '../closet/picker'
 import { MINIMUM, closetReadiness } from '../closet/readiness'
 import LocationPicker from '../components/LocationPicker'
@@ -94,7 +94,9 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   const [weatherDoneFor, setWeatherDoneFor] = useState<string>()
   const weatherDone = !!forecast || weatherDoneFor === weatherKey
   const [failure, setFailure] = useState<{ message: string; reason: NothingFits; slot?: Item['category'][] }>()
-  const [onlyOne, setOnlyOne] = useState(false)
+  // The last pick's notes ("the only outfit that fits", "the only top that fits"). "No clean
+  // coat" is left out: it's worked out from the saved outfit, so it survives a reopen.
+  const [pickNotes, setPickNotes] = useState<string[]>([])
   const [swipeNote, setSwipeNote] = useState<string>()
   const [changingPlace, setChangingPlace] = useState(false)
 
@@ -124,7 +126,7 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
       forecast, date, locked: state.locked, current: currentKey, dislikes: dislikedNow, random: Math.random,
     })
     setFailure(result.ok ? undefined : result)
-    setOnlyOne(result.ok && result.notes.includes(ONLY_OUTFIT))
+    setPickNotes(result.ok ? result.notes.filter((n) => n !== NO_COAT) : [])
     setSwipeNote(undefined)
     const itemIds = result.ok ? result.itemIds : []
     // Skip a write that changes nothing, or the live query would loop on "nothing fits".
@@ -161,7 +163,7 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
     const { itemIds, locked } = plan.state
     const result = swipeItem({ items, settings, forecast, date, outfit: itemIds, locked, dislikes: dislikeKeys }, id, step)
     setSwipeNote(result.ok ? undefined : result.message)
-    setOnlyOne(false)
+    setPickNotes([])
     if (result.ok && !sameIds(result.itemIds, itemIds)) return saveToday(db, { date, itemIds: result.itemIds, locked })
   }
 
@@ -218,10 +220,10 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
             ))}
           </ul>
           <ul className="notes">
-            {onlyOne && <li>{ONLY_OUTFIT}</li>}
+            {pickNotes.map((n) => <li key={n}>{n}</li>)}
             {noCoat && <li>{NO_COAT}</li>}
             {swipeNote && <li>{swipeNote}</li>}
-            {!onlyOne && !noCoat && !swipeNote && <li className="hint">Swipe an item to change just that one.</li>}
+            {pickNotes.length === 0 && !noCoat && !swipeNote && <li className="hint">Swipe an item to change just that one.</li>}
           </ul>
           <div className="outfit-bar">
             <button onClick={dislike} aria-label="Never show this outfit again">👎</button>

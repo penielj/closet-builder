@@ -25,7 +25,7 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
 - **Occasion.** A row of the four occasions, with the one from last time selected. Changing it picks a new outfit, keeping locked items.
 - **The outfit.** The app shows one outfit. On it you can:
   - **🔒 Lock** an item so it stays when you shuffle.
-  - Mark an item **Not today**, which excludes it until midnight.
+  - Mark an item **Not today**, which excludes it until midnight. In the Closet tab it's dimmed with a **Wear today** button that undoes it.
   - Send an item **→ Hamper**.
   - Tap **👎** to never see this outfit again. A new outfit is picked straight away.
   - Tap **Shuffle** for a new outfit.
@@ -70,7 +70,8 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
    - Build every valid base + shoes combo, which is fast at closet size.
    - Drop the disliked ones.
    - Drop the outfit on screen now, unless it's the only one left. In that case show it again with the note "This is the only outfit that fits."
-   - Pick one at random.
+   - Change as much as possible: keep only the outfits that share the fewest unlocked items with the one on screen (phone test 2: Shuffle kept the same top). An unlocked item that's in every outfit left gets the note "{Name} is the only {top} that fits today."
+   - Pick one of those at random.
    - Locked items are always included, even when they break rules 2–4. They still count toward rules 6 and 7. Putting a locked item in the hamper, marking it Not today or deleting it unlocks it.
 9. **Coat:** added after the base and shoes are picked, when the feels-like low is below 15°C or the chance of rain is 50% or more.
    - It's chosen from outerwear that passes rules 1–3. Rule 4's ±1 doesn't apply.
