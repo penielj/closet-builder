@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { localDate, planToday } from '../closet/daily'
 import { wearLabel } from '../closet/wear'
 import {
@@ -13,7 +13,7 @@ import {
   clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday, wearOutfit, wearToday,
 } from '../db/repo'
 import { type Item, type ItemId, SETTINGS_KEY, type Settings, type TodayState, outfitKey } from '../db/schema'
-import { CATEGORIES, type Category, OCCASIONS, type Occasion, label } from '../db/values'
+import { type Category, OCCASIONS, type Occasion, label } from '../db/values'
 import { currentPosition, fetchForecast } from '../weather/openMeteo'
 
 const WEATHER_WAIT_MS = 5000 // DESIGN Flow C, "Weather"
@@ -164,9 +164,9 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   }, [plan, dislikes, weatherDone])
   /* oxlint-enable react/set-state-in-effect, react-hooks/exhaustive-deps */
 
-  // In outfit order: shirt and pants (or a dress), then sweater, shoes, coat, hat and bag.
-  const shown = plan.repick ? [] : plan.state.itemIds.map((id) => byId.get(id)!).filter(Boolean)
-    .sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category))
+  // Laid out head to toe (rule 12): the list below the grid follows the same order.
+  const layout = layOut(plan.repick ? [] : plan.state.itemIds.map((id) => byId.get(id)!).filter(Boolean))
+  const shown = layout.placed.map((p) => p.item)
   const locked = new Set(plan.state.locked)
   // Rule 16: once worn, the outfit is fixed for the day and says what went to the hamper.
   const worn = !!plan.state.worn
@@ -241,23 +241,25 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
 
       {shown.length > 0 ? (
         <>
-          <ul className="looks">
-            {shown.map((item) => (
+          <ul className="looks" style={{ '--cols': layout.cols } as CSSProperties}>
+            {layout.placed.map(({ item, row, col }) => (
               <SlotCarousel
                 key={item.category} // one per slot, so the carousel stays put while its item changes
                 item={item}
+                row={row}
+                col={col}
                 choices={locked.has(item.id) || worn ? [item] : slotChoices(swipeInput, item.id)}
                 locked={locked.has(item.id) || worn}
                 onChoose={(id) => choose(item.id, id)}
                 onToggleLock={worn ? undefined : () => toggleLock(item.id)}
               />
             ))}
-            {!worn && addable.map((c) => (
-              <li key={c} className="look look-add">
-                <button onClick={() => addLayer(c)}>+ {LAYER_NAMES[c]}</button>
-              </li>
-            ))}
           </ul>
+          {!worn && addable.length > 0 && (
+            <div className="add-layers">
+              {addable.map((c) => <button key={c} className="link" onClick={() => addLayer(c)}>+ {LAYER_NAMES[c]}</button>)}
+            </div>
+          )}
           {/* The flat lay has no text, so the pieces are named here. */}
           <ul className="pieces">
             {shown.map((item) => (
@@ -343,6 +345,23 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   )
 }
 
+// The outfit as a body, head to toe down the first column (hat; top or dress; bottom;
+// shoes), with the upper layers going out to the right of the top (shirt → sweater →
+// jacket) and the bag beside the shoes. Every square is the same size, so the grid is as
+// many columns wide as the longest row (DESIGN §3 C).
+interface Placed { item: Item; row: number; col: number }
+function layOut(items: Item[]): { placed: Placed[]; cols: number } {
+  const of = (c: Category) => items.find((i) => i.category === c)
+  const rows = [
+    [of('hat')],
+    [of('top') ?? of('dress'), of('sweater'), of('outerwear')],
+    [of('bottom')],
+    [of('shoes'), of('bag')],
+  ].map((r) => r.filter((i): i is Item => !!i)).filter((r) => r.length > 0)
+  const placed = rows.flatMap((r, y) => r.map((item, x) => ({ item, row: y + 1, col: x + 1 })))
+  return { placed, cols: Math.max(1, ...rows.map((r) => r.length)) }
+}
+
 const LAYERS = ['sweater', 'outerwear', 'hat', 'bag'] as const
 const LAYER_NAMES: Record<(typeof LAYERS)[number], string> = { sweater: 'Sweater', outerwear: 'Jacket', hat: 'Hat', bag: 'Bag' }
 
@@ -358,8 +377,9 @@ const SETTLE_MS = 120 // a carousel counts as settled this long after its last s
 // native horizontal scroller that snaps a photo at a time and follows the finger. When it
 // settles on another item, that item replaces this one. The lock sits in the photo's
 // top-right corner; a locked slot shows only its item and doesn't scroll.
-function SlotCarousel({ item, choices, locked, onChoose, onToggleLock }: {
-  item: Item; choices: Item[]; locked: boolean; onChoose: (id: ItemId) => void; onToggleLock?: () => void // none once worn
+function SlotCarousel({ item, row, col, choices, locked, onChoose, onToggleLock }: {
+  item: Item; row: number; col: number; choices: Item[]; locked: boolean
+  onChoose: (id: ItemId) => void; onToggleLock?: () => void // none once worn
 }) {
   const track = useRef<HTMLDivElement>(null)
   const at = Math.max(0, choices.findIndex((c) => c.id === item.id))
@@ -397,7 +417,7 @@ function SlotCarousel({ item, choices, locked, onChoose, onToggleLock }: {
   const touch = () => { touched.current = true }
 
   return (
-    <li className={`look look-${item.category} ${locked ? 'locked' : ''}`}>
+    <li className={`look look-${item.category} ${locked ? 'locked' : ''}`} style={{ gridRow: row, gridColumn: col }}>
       <div className="look-photo">
         <div
           className="look-track" ref={track} onScroll={locked ? undefined : onScroll}
