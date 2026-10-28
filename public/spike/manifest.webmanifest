@@ -1,0 +1,9 @@
+{
+  "name": "Closet category spike",
+  "short_name": "Category spike",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff"
+}

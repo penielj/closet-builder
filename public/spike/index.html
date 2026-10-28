@@ -1,0 +1,240 @@
+<!doctype html>
+<!-- Spike 0.3 (DESIGN §8 step 4, results in spikes/RESULTS.md): can an on-device image
+     model tell the category from a clothing photo, accurately and fast enough, on the
+     installed iPhone app? Throwaway page, deleted once the results are recorded.
+     The text side of the model is precomputed (spikes/category-embed-text.mjs into
+     text-embeds.json), so the phone only downloads the vision model. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="../icons/icon-192.png">
+  <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <title>Category spike</title>
+  <style>
+    body { font: 16px/1.4 -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; max-width: 560px; }
+    button, select, .button { font: inherit; width: 100%; padding: 14px; margin: 6px 0; border-radius: 10px; border: 1px solid #999; background: #f4f4f4; display: block; text-align: center; box-sizing: border-box; }
+    button:disabled { opacity: .4; }
+    #status, #tally { padding: 10px; border-radius: 8px; background: #eef; margin: 10px 0; }
+    #log { font: 13px/1.4 ui-monospace, monospace; white-space: pre-wrap; background: #111; color: #ddd; padding: 10px; border-radius: 8px; min-height: 120px; }
+    .pass { color: #0a7a2f; font-weight: 600; } .fail { color: #b00020; font-weight: 600; }
+    .result { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid #ddd; }
+    .result img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; background: #fff; border: 1px solid #ddd; }
+    .result .body { flex: 1; min-width: 0; font-size: 14px; }
+    .result select { padding: 6px; margin: 4px 0 0; font-size: 14px; }
+    .result.wrong { background: #fde8e8; }
+  </style>
+</head>
+<body>
+  <h1>Category spike</h1>
+  <div id="env"></div>
+
+  <h2>1. Model</h2>
+  <select id="model">
+    <option value="Xenova/mobileclip_s0|fp32">MobileCLIP-S0, full precision (~46MB)</option>
+    <option value="Xenova/clip-vit-base-patch32|q8">CLIP ViT-B/32, 8-bit (~89MB)</option>
+  </select>
+  <select id="device">
+    <option value="wasm">CPU (wasm)</option>
+    <option value="webgpu">GPU (WebGPU)</option>
+  </select>
+  <button id="load">Load model</button>
+  <div id="status">Not loaded.</div>
+
+  <h2>2. Photos</h2>
+  <p>Pick your photos (up to 20 at a time). Each is resized the way the app does it, then recognized. Fix any wrong ones with the menu under it.</p>
+  <label class="button">Choose photos<input id="photos" type="file" accept="image/*" multiple hidden disabled></label>
+  <div id="tally">No photos yet.</div>
+  <div id="results"></div>
+
+  <h2>3. Offline</h2>
+  <p>After loading a model once: turn on Airplane Mode, close this app from the app switcher, open it again, and tap Load model. It should load from the cache.</p>
+  <button id="storage">Show storage used</button>
+
+  <button id="copy">Copy log</button>
+  <div id="log"></div>
+
+<script type="module">
+// The library comes from a CDN instead of the repo: GitHub's secret scanning flags a string
+// in the minified file and blocks the push. A copy is kept in Cache Storage, so the page
+// still loads in Airplane Mode. This build bundles its runtime code, so it imports nothing else.
+const LIBRARY = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/dist/transformers.min.js'
+async function loadLibrary() {
+  const cache = await caches.open('spike-0.3')
+  let res = await cache.match(LIBRARY)
+  if (!res) {
+    res = await fetch(LIBRARY)
+    if (!res.ok) throw new Error(`library download failed: ${res.status}`)
+    await cache.put(LIBRARY, res.clone())
+  }
+  const code = new Blob([await res.arrayBuffer()], { type: 'text/javascript' })
+  return import(URL.createObjectURL(code))
+}
+
+// A home-screen app has its own storage, so this page registers the app's service worker
+// itself to open offline. The worker's precache includes this page.
+navigator.serviceWorker?.register('../sw.js').catch(() => {})
+
+const { env, AutoProcessor, CLIPVisionModelWithProjection, RawImage } = await loadLibrary()
+
+const $ = (id) => document.getElementById(id)
+const log = (msg) => { $('log').textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n` }
+const mb = (n) => `${(n / 1048576).toFixed(1)}MB`
+const CATEGORIES = ['top', 'bottom', 'dress', 'shoes', 'outerwear']
+
+env.allowLocalModels = false
+
+const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches
+$('env').innerHTML =
+  `Installed app: <span class="${standalone ? 'pass' : 'fail'}">${standalone ? 'yes' : 'NO, add to home screen first'}</span><br>` +
+  `Online: ${navigator.onLine} · WebGPU: ${'gpu' in navigator} · crossOriginIsolated: ${self.crossOriginIsolated}<br>` +
+  `<small>${navigator.userAgent}</small>`
+log(`standalone=${standalone} online=${navigator.onLine} webgpu=${'gpu' in navigator}`)
+
+// A crash from running out of memory reloads the page on iOS. sessionStorage survives that.
+const running = sessionStorage.getItem('running')
+if (running) log(`⚠ RELOAD during "${running}" (likely out of memory)`)
+const busy = (what) => (what ? sessionStorage.setItem('running', what) : sessionStorage.removeItem('running'))
+
+const textEmbeds = await (await fetch('text-embeds.json')).json()
+
+let loaded // { id, dtype, device, processor, model }
+$('load').onclick = async () => {
+  const [id, dtype] = $('model').value.split('|')
+  const device = $('device').value
+  $('load').disabled = true
+  $('photos').disabled = true
+  busy(`load ${id} ${dtype} ${device}`)
+  let total = 0
+  const t = performance.now()
+  try {
+    const progress_callback = (p) => {
+      if (p.status === 'progress_total') {
+        total = p.total
+        $('status').textContent = `Downloading ${mb(p.loaded)} of ${mb(p.total)}…`
+      }
+    }
+    const processor = await AutoProcessor.from_pretrained(id)
+    const model = await CLIPVisionModelWithProjection.from_pretrained(id, { dtype, device, progress_callback })
+    loaded = { id, dtype, device, processor, model }
+    const s = ((performance.now() - t) / 1000).toFixed(1)
+    const msg = `Loaded ${id} ${dtype} on ${device} in ${s}s${total ? `, model files ${mb(total)}` : ''} (online=${navigator.onLine})`
+    $('status').textContent = msg
+    log(msg)
+    reset()
+    $('photos').disabled = false
+  } catch (e) {
+    $('status').textContent = `Failed: ${e.message}`
+    log(`load FAILED: ${e.name}: ${e.message}`)
+  } finally {
+    busy()
+    $('load').disabled = false
+  }
+}
+
+// The same steps as the app's processPhoto: upright via <img>, 800px, white fill, JPEG 0.82.
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("couldn't read photo")) }
+    img.src = url
+  })
+}
+async function resize(file) {
+  const img = await loadImage(file)
+  const scale = Math.min(1, 800 / Math.max(img.naturalWidth, img.naturalHeight))
+  const canvas = Object.assign(document.createElement('canvas'), {
+    width: Math.round(img.naturalWidth * scale), height: Math.round(img.naturalHeight * scale),
+  })
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82))
+}
+
+async function recognize(blob) {
+  const { processor, model, id } = loaded
+  const t = performance.now()
+  const { image_embeds } = await model(await processor(await RawImage.fromBlob(blob)))
+  const v = image_embeds.normalize(2, -1).tolist()[0]
+  const scored = textEmbeds[id].map((p) => ({ ...p, score: p.embedding.reduce((s, x, i) => s + x * v[i], 0) }))
+  // Each category's score is its best-matching description.
+  const best = {}
+  for (const p of scored) if (!best[p.category] || p.score > best[p.category].score) best[p.category] = p
+  const ranked = Object.values(best).sort((a, b) => b.score - a.score)
+  return { ranked, ms: performance.now() - t }
+}
+
+let rows = [] // { predicted, actual, ms }
+function reset() { rows = []; $('results').innerHTML = ''; tally() }
+function tally() {
+  if (!rows.length) { $('tally').textContent = 'No photos yet.'; return }
+  const right = rows.filter((r) => r.actual === r.predicted).length
+  const times = rows.map((r) => r.ms)
+  const avg = times.reduce((a, b) => a + b, 0) / times.length
+  const text = `${right} of ${rows.length} right · avg ${(avg / 1000).toFixed(2)}s, slowest ${(Math.max(...times) / 1000).toFixed(2)}s per photo`
+  $('tally').innerHTML = `<span class="${right >= rows.length * 0.9 ? 'pass' : 'fail'}">${text}</span>`
+  return text
+}
+
+$('photos').onchange = async (e) => {
+  const files = [...e.target.files]
+  e.target.value = ''
+  if (!loaded) return
+  $('photos').disabled = true
+  busy(`recognize ${files.length} photos`)
+  try {
+    for (const file of files) {
+      const blob = await resize(file)
+      const { ranked, ms } = await recognize(blob)
+      const row = { predicted: ranked[0].category, actual: ranked[0].category, ms }
+      rows.push(row)
+      const el = document.createElement('div')
+      el.className = 'result'
+      const img = document.createElement('img')
+      img.src = URL.createObjectURL(blob)
+      const body = document.createElement('div')
+      body.className = 'body'
+      body.innerHTML = `<b>${ranked[0].category}</b> (${ranked[0].label}) · ${(ms / 1000).toFixed(2)}s<br>` +
+        `<small>${ranked.slice(1, 3).map((r) => `${r.category} ${r.score.toFixed(3)}`).join(' · ')} · top ${ranked[0].score.toFixed(3)}</small>`
+      const select = document.createElement('select')
+      select.innerHTML = CATEGORIES.map((c) => `<option value="${c}" ${c === row.predicted ? 'selected' : ''}>Actually: ${c}</option>`).join('')
+      select.onchange = () => {
+        row.actual = select.value
+        el.classList.toggle('wrong', row.actual !== row.predicted)
+        log(`corrected: predicted ${row.predicted}, actually ${row.actual}`)
+        tally()
+      }
+      body.append(select)
+      el.append(img, body)
+      $('results').append(el)
+      log(`${file.name}: ${ranked[0].category} (${ranked[0].label}) in ${ms.toFixed(0)}ms`)
+      tally()
+    }
+    log(`TALLY ${loaded.id} ${loaded.dtype} ${loaded.device}: ${tally()}`)
+  } catch (err) {
+    log(`recognize FAILED: ${err.name}: ${err.message}`)
+  } finally {
+    busy()
+    $('photos').disabled = false
+  }
+}
+
+$('storage').onclick = async () => {
+  const { usage, quota } = await navigator.storage.estimate()
+  const persisted = await navigator.storage.persisted?.()
+  log(`storage: ${mb(usage)} used of ${mb(quota)}, persisted=${persisted}`)
+}
+
+$('copy').onclick = async () => {
+  await navigator.clipboard.writeText($('log').textContent)
+  log('copied')
+}
+</script>
+</body>
+</html>

@@ -47,3 +47,29 @@ Recorded, not pass/fail:
 | AirDrop declined | |
 | With `title`: extra text file saved? | |
 | Android Chrome `canShare({ files: [jsonFile] })` | |
+
+## 0.3 Category from the photo: not run yet
+Page: `public/spike/` (https://penielj.github.io/closet-builder/spike/), installed to the home screen as its own app ("Category spike"), like 0.2. Delete it once these results are recorded.
+
+How it works: a CLIP-style model compares the photo with 26 short descriptions ("a photo of a pair of jeans.") spread over the five categories, and each category scores its best-matching description. The descriptions are turned into numbers once on a computer (`spikes/category-embed-text.mjs` writes `public/spike/text-embeds.json`), so the phone only downloads the image half of the model. Photos go through the app's own resize (800px, white fill, JPEG) first. The library is transformers.js 4.3.1 (`transformers.min.js`), loaded from jsdelivr and kept in the page's own cache. It isn't committed: GitHub's push protection flagged a string in the minified file as a "Mistral AI API key" (a false positive in third-party code). The ~28MB runtime and the model are downloaded once and cached by the library.
+
+Checked on a Mac in Chrome before the phone run (2026-10-28), on 3 Wikimedia photos (a t-shirt, sneakers, a trench coat):
+
+| Model | Model files | Per photo | Right |
+|---|---|---|---|
+| MobileCLIP-S0, full precision | 43.4MB | ~0.17s | 3 of 3 |
+| MobileCLIP-S0, 8-bit (q8) | 11.8MB | | Broken: everything is "skirt". Left off the page. |
+| CLIP ViT-B/32, 8-bit (q8) | 85.0MB | ~0.21s | 3 of 3 |
+
+Pass criteria (DESIGN §8 step 4), from the installed app on the iPhone, with 20 real photos:
+
+| Criterion | MobileCLIP-S0 | CLIP ViT-B/32 |
+|---|---|---|
+| At least 18 of 20 right (the tally line) | | |
+| Under 3s per photo once loaded (the tally line: avg and slowest) | | |
+| Download under 100MB (Show storage used, after loading only this model) | | |
+| Loads in Airplane Mode after closing and reopening the app | | |
+| No crash or reload (no "⚠ RELOAD" in the log) | | |
+| Which ones it got wrong, and what it said | | |
+
+Recorded, not pass/fail: first load time, cached load time, and whether GPU (WebGPU) loads and is faster than CPU.
