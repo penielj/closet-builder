@@ -14,9 +14,13 @@ export interface PickInput {
   random: () => number
 }
 
+// Why nothing fits (rule 10): a slot has nothing clean, the locks clash with everything,
+// every outfit left has a 👎, or the clean clothes break rules 6 and 7.
+export type NothingFits = 'missing' | 'locked' | 'disliked' | 'clash'
+
 export type PickResult =
   | { ok: true; itemIds: ItemId[]; key: string; notes: string[] }
-  | { ok: false; message: string }
+  | { ok: false; message: string; reason: NothingFits }
 
 export const ONLY_OUTFIT = 'This is the only outfit that fits.'
 export const NO_COAT = 'No clean coat.'
@@ -72,7 +76,7 @@ export function pickOutfit(input: PickInput): PickResult {
 
   let options = attempt(true)
   if (options.length === 0 && forecast) options = attempt(false) // rule 10: once more without rule 4
-  if (options.length === 0) return { ok: false, message: nothingFits(items, locked, fitsDay, occasion) }
+  if (options.length === 0) return { ok: false, ...nothingFits(items, locked, fitsDay, occasion, input.dislikes) }
 
   // Rule 8: drop the outfit on screen now, unless it's the only one left.
   const notes: string[] = []
@@ -173,11 +177,27 @@ function pickCoat(
   return coats[Math.floor(random() * coats.length)]
 }
 
-// Rule 10's messages, the first that applies. Locked items count as passing.
-function nothingFits(items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, occasion: Occasion): string {
+// Rule 10's messages, the first that applies. Locked items count as passing. Called after
+// the retry without rule 4, so warmth isn't checked here either.
+function nothingFits(
+  items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, occasion: Occasion, dislikes: ReadonlySet<string>,
+): { message: string; reason: NothingFits } {
+  const missing = (message: string) => ({ message, reason: 'missing' as const })
   const any = (c: Item['category']) => locked.some((i) => i.category === c) || items.some((i) => i.category === c && fitsDay(i))
-  if (!any('top') && !any('dress')) return `No clean ${occasion} tops.`
-  if (!any('bottom') && !any('dress')) return `No clean ${occasion} bottoms.`
-  if (!any('shoes')) return `No clean ${occasion} shoes.`
-  return `Your clean ${occasion} clothes don't go together. Try Laundry done, or unlock an item.`
+  if (!any('top') && !any('dress')) return missing(`No clean ${occasion} tops.`)
+  if (!any('bottom') && !any('dress')) return missing(`No clean ${occasion} bottoms.`)
+  if (!any('shoes')) return missing(`No clean ${occasion} shoes.`)
+
+  const liked = (c: Item[]) => !dislikes.has(outfitKey(c.map((i) => i.id)))
+  if (locked.length > 0 && combos(items, [], fitsDay).some(liked)) {
+    return { message: "Your locked items don't go with anything clean. Unlock one to see more outfits.", reason: 'locked' }
+  }
+  if (combos(items, locked, fitsDay).length > 0) {
+    return { message: `You've given a 👎 to every ${occasion} outfit that's left.`, reason: 'disliked' }
+  }
+  const laundry = items.some((i) => i.inHamper) ? ' Try Laundry done.' : ''
+  return {
+    message: `Your clean ${occasion} clothes don't go together: an outfit can have only one statement color and one pattern.${laundry}`,
+    reason: 'clash',
+  }
 }

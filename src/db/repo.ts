@@ -50,6 +50,10 @@ export const dislikeOutfit = (db: ClosetDB, ids: ItemId[]) =>
     await db.outfits.put({ key: outfitKey(ids), itemIds: sortIds(ids), rating: 'dislike' })
   })
 
+// The way out when every outfit left has a 👎 (DESIGN §5 rule 10).
+export const clearDislikes = (db: ClosetDB) =>
+  tracked(db, [db.outfits], async () => { await db.outfits.clear() })
+
 export const setComfortOffset = (db: ClosetDB, value: Settings['comfortOffset']) =>
   tracked(db, [], async () => { await db.settings.update(SETTINGS_KEY, { comfortOffset: value }) })
 

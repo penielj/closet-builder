@@ -79,7 +79,11 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
    - A locked coat is always shown, even when the weather doesn't call for one.
 10. **Nothing fits:** try once more without rule 4. If that fails too, show a message:
     - If no top or dress passes rules 1–3, say "No clean {occasion} tops." Do the same for bottoms (when there are no dresses either) and for shoes. Use the first one that applies, in that order.
-    - Otherwise say "Your clean {occasion} clothes don't go together. Try Laundry done, or unlock an item."
+    - Otherwise, the first that applies:
+      - Locks are set and an outfit would fit without them: "Your locked items don't go with anything clean. Unlock one to see more outfits."
+      - An outfit would fit without the 👎s: "You've given a 👎 to every {occasion} outfit that's left." with a **Forget my 👎s** button, which clears every dislike and counts as a real change.
+      - Otherwise: "Your clean {occasion} clothes don't go together: an outfit can have only one statement color and one pattern." When something is in the hamper, add "Try Laundry done."
+    - Locks can't be seen without an outfit, so the message lists the locked items, each with an **Unlock** button (phone test 1: the old message said "unlock an item" with no way to see which).
 11. **No weather:** if the forecast doesn't arrive (offline, no location yet, or the request fails), rule 4 and the coat are skipped, and the weather line says "No weather, so warmth isn't checked." A forecast already fetched today is reused without a new request.
 
 12. **Swipe:** swiping an item on Today replaces only that item, keeping the rest of the outfit and its locks.

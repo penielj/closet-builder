@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import Dexie from 'dexie'
 import { ClosetDB, SETTINGS_KEY } from './schema'
 import {
-  type NewItem, addItem, deleteItem, dislikeOutfit, ensureSettings, laundryDone, saveForecast, saveToday,
+  type NewItem, addItem, clearDislikes, deleteItem, dislikeOutfit, ensureSettings, laundryDone, saveForecast, saveToday,
   setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, updateItem,
 } from './repo'
 
@@ -43,10 +43,12 @@ describe('change tracking (DESIGN §7)', () => {
     expect(await changes()).toBe(3)
   })
 
-  it('counts dislikes and the comfort setting', async () => {
+  it('counts dislikes, forgetting them, and the comfort setting', async () => {
     await dislikeOutfit(db, [1, 2])
+    await clearDislikes(db)
     await setComfortOffset(db, -3)
-    expect(await changes()).toBe(2)
+    expect(await changes()).toBe(3)
+    expect(await db.outfits.count()).toBe(0)
   })
 
   it('does not count the hamper, laundry, "not today", occasion, location or today', async () => {

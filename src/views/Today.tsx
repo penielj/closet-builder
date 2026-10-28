@@ -1,12 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { type PointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { localDate, planToday } from '../closet/daily'
-import { NO_COAT, ONLY_OUTFIT, coatWanted, fitsDayFor, isBase, pickOutfit, swipeItem } from '../closet/picker'
+import {
+  NO_COAT, type NothingFits, ONLY_OUTFIT, coatWanted, fitsDayFor, isBase, pickOutfit, swipeItem,
+} from '../closet/picker'
 import { MINIMUM, closetReadiness } from '../closet/readiness'
 import LocationPicker from '../components/LocationPicker'
 import { StoredPhoto } from '../components/Photo'
 import { db } from '../db'
-import { dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday } from '../db/repo'
+import { clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday } from '../db/repo'
 import { type Item, type ItemId, type Settings, type TodayState, outfitKey } from '../db/schema'
 import { OCCASIONS, type Occasion, label } from '../db/values'
 import { currentPosition, fetchForecast } from '../weather/openMeteo'
@@ -89,7 +91,7 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
   const weatherKey = `${date}|${lat}|${lon}`
   const [weatherDoneFor, setWeatherDoneFor] = useState<string>()
   const weatherDone = !!forecast || weatherDoneFor === weatherKey
-  const [message, setMessage] = useState<string>()
+  const [failure, setFailure] = useState<{ message: string; reason: NothingFits }>()
   const [onlyOne, setOnlyOne] = useState(false)
   const [swipeNote, setSwipeNote] = useState<string>()
   const [changingPlace, setChangingPlace] = useState(false)
@@ -119,7 +121,7 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
       settings: { ...settings, lastOccasion: opts.occasion ?? settings.lastOccasion },
       forecast, date, locked: state.locked, current: currentKey, dislikes: dislikedNow, random: Math.random,
     })
-    setMessage(result.ok ? undefined : result.message)
+    setFailure(result.ok ? undefined : result)
     setOnlyOne(result.ok && result.notes.includes(ONLY_OUTFIT))
     setSwipeNote(undefined)
     const itemIds = result.ok ? result.itemIds : []
@@ -223,8 +225,25 @@ function DailyOutfit({ items, settings, date }: { items: Item[]; settings: Setti
             <button className="primary" onClick={() => repick(plan.state)}>Shuffle</button>
           </div>
         </>
-      ) : message && plan.state.itemIds.length === 0 && weatherDone ? (
-        <p className="panel">{message}</p>
+      ) : failure && plan.state.itemIds.length === 0 && weatherDone ? (
+        <div className="panel">
+          <p>{failure.message}</p>
+          {/* Locks aren't visible without an outfit, so they're listed here to undo. */}
+          {plan.state.locked.length > 0 && (
+            <ul className="list">
+              {plan.state.locked.map((id) => byId.get(id)).filter((i): i is Item => !!i).map((item) => (
+                <li key={item.id} className="row">
+                  <StoredPhoto itemId={item.id} color={item.color} alt={item.name} />
+                  <span className="row-name">🔒 {item.name}</span>
+                  <button onClick={() => toggleLock(item.id)}>Unlock</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {failure.reason === 'disliked' && (
+            <button className="primary" onClick={() => clearDislikes(db)}>Forget my 👎s</button>
+          )}
+        </div>
       ) : (
         <p className="muted empty">Picking an outfit…</p>
       )}

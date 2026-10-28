@@ -231,7 +231,7 @@ describe('locks (rule 8)', () => {
     const red = item('top', { color: 'red' })
     const items = [red, item('bottom', { color: 'blue' }), item('shoes')]
     const r = pick({ items, locked: [red.id] })
-    expect(r).toEqual({ ok: false, message: "Your clean casual clothes don't go together. Try Laundry done, or unlock an item." })
+    expect(r.ok === false && r.reason).toBe('clash')
   })
 
   it('a locked dress rules out tops and bottoms, and a locked top rules out dresses', () => {
@@ -286,18 +286,29 @@ describe('nothing fits (rule 10)', () => {
 
   it("uses the occasion's name", () => {
     const r = pick({ items: [item('top')], settings: { comfortOffset: 0, lastOccasion: 'work', location: LONDON } })
-    expect(r).toEqual({ ok: false, message: 'No clean work tops.' })
+    expect(r).toEqual({ ok: false, message: 'No clean work tops.', reason: 'missing' })
   })
 
-  it("says the clothes don't go together when each slot has something", () => {
+  it("says the clothes clash when each slot has something, and suggests laundry only when the hamper isn't empty", () => {
     const items = [item('top', { color: 'red' }), item('bottom', { color: 'blue' }), item('shoes')]
-    expect(pick({ items })).toEqual({ ok: false, message: "Your clean casual clothes don't go together. Try Laundry done, or unlock an item." })
+    const clash = "Your clean casual clothes don't go together: an outfit can have only one statement color and one pattern."
+    expect(pick({ items })).toEqual({ ok: false, message: clash, reason: 'clash' })
+    expect(pick({ items: [...items, item('bottom', { inHamper: true })] }))
+      .toEqual({ ok: false, message: `${clash} Try Laundry done.`, reason: 'clash' })
   })
 
-  it('counts every outfit being disliked as nothing fitting', () => {
+  it('blames the locks when unlocking would leave an outfit', () => {
+    const red = item('top', { color: 'red' })
+    const items = [red, item('top'), item('bottom', { color: 'blue' }), item('shoes')]
+    expect(pick({ items, locked: [red.id] })).toEqual({
+      ok: false, message: "Your locked items don't go with anything clean. Unlock one to see more outfits.", reason: 'locked',
+    })
+  })
+
+  it('says when every outfit left has a 👎', () => {
     const items = [item('top'), item('bottom'), item('shoes')]
-    const r = pick({ items, dislikes: new Set([items.map((i) => i.id).join('|')]) })
-    expect(r.ok).toBe(false)
+    const r = pick({ items, dislikes: new Set([outfitKey(items.map((i) => i.id))]) })
+    expect(r).toEqual({ ok: false, message: "You've given a 👎 to every casual outfit that's left.", reason: 'disliked' })
   })
 })
 
