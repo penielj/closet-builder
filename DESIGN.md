@@ -1,6 +1,6 @@
 # Closet Builder: Design Doc
 
-**Status:** v8 (Today specified) · **Date:** 2026-10-21 · **Author:** Peniel Johnson
+**Status:** v9 (phone test 1 fixes specified) · **Date:** 2026-10-28 · **Author:** Peniel Johnson
 
 ## 1. Summary
 Closet Builder is a personal web app, installable on your phone. Each morning it suggests an outfit made only from clothes you own that are **clean today**, chosen to suit the weather and the occasion. Everything stays on the device, with no account and no server.
@@ -11,13 +11,13 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
 - Useful after cataloging about **20 items**.
 - Never suggest something that's in the hamper.
 
-**Non-goals:** AI outfit generation, accounts or sync, notifications, shopping.
+**Non-goals:** AI outfit generation, accounts or sync, notifications, shopping. Recognizing an item's category from its photo on the device isn't outfit generation: it only pre-fills the form, like auto color (spike 0.3, §8 step 4).
 
 ## 3. Flows
 
 **A. First run.** A welcome screen says "Add the ~20 things you actually wear." A progress meter shows what the picker needs: at least 3 tops, 2 bottoms and 1 pair of shoes, where a dress counts as both a top and a bottom. Today unlocks once that's met. On an iPhone, in Safari rather than the installed app, a banner says: "Add to Home Screen before you start. What you add in Safari stays in Safari."
 
-**B. Add an item.** Take or choose a photo. The app resizes it and pre-selects its color. Fill in the name, category, pattern, occasions, seasons, warmth and an optional brand, then save.
+**B. Add an item.** Take or choose a photo. The app resizes it and pre-selects its color. For a clean white background, use an iPhone cutout: in Photos, touch and hold the clothing, then Share the lifted subject and save it as an image, and choose that image here. The app fills the cut-out area with white. Fill in the name, category, pattern, occasions, seasons, warmth and an optional brand, then save.
 
 **C. Today.**
 - **Location.** The first time Today opens, the app asks for geolocation. If that's denied or fails, Today shows a city box instead of an outfit. After that the saved location is used every day. The weather line has a **Change** link that asks for geolocation again or takes a new city.
@@ -29,9 +29,10 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
   - Send an item **→ Hamper**.
   - Tap **👎** to never see this outfit again. A new outfit is picked straight away.
   - Tap **Shuffle** for a new outfit.
+  - **Swipe** an item left or right to change only that item (§5, rule 12).
 
 **Today's outfit stays put.** The picked outfit and its locks are saved for the day, so reopening the app shows the same outfit. A new outfit is picked, keeping locked items, only when:
-- you tap Shuffle or 👎, or change the occasion
+- you tap Shuffle or 👎, or change the occasion (a swipe changes only the swiped item)
 - an item in it goes to the hamper, is marked Not today, or is deleted
 - it's a new day (checked when the app opens or comes back to the front). Locks are cleared then too.
 
@@ -48,8 +49,8 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 | Area | Feature |
 |---|---|
 | Closet | A photo grid filtered by category. Add, edit and delete items. Hamper items are dimmed. |
-| Photos | Taken with the camera or uploaded, then resized on the device to about 800px JPEG. That also removes EXIF data, including location. |
-| Auto color | Samples the center 50% of the photo and snaps the dominant color to the nearest palette color. You can override it. |
+| Photos | Taken with the camera or uploaded, then resized on the device to about 800px JPEG. That also removes EXIF data, including location. Transparent areas (an iPhone cutout) are filled with white, since JPEG has no transparency and would turn them black. |
+| Auto color | Samples the center 50% of the photo and snaps the dominant color to the nearest palette color. Transparent pixels are skipped, so a cutout's background isn't counted. You can override it. |
 | Brand | Autocompletes from existing items, so spellings stay consistent. |
 | Weather | Open-Meteo forecast (free, no key): `daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max`, `timezone=auto`, `forecast_days=1`, in °C. The location comes from browser geolocation, or from a typed city looked up with Open-Meteo's geocoding API (first result). |
 | Comfort | "I run cold / neutral / warm" sets the comfort offset to +3, 0 or −3. Rule 4 subtracts it, so running cold makes every temperature feel 3°C colder. |
@@ -81,6 +82,12 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
     - Otherwise say "Your clean {occasion} clothes don't go together. Try Laundry done, or unlock an item."
 11. **No weather:** if the forecast doesn't arrive (offline, no location yet, or the request fails), rule 4 and the coat are skipped, and the weather line says "No weather, so warmth isn't checked." A forecast already fetched today is reused without a new request.
 
+12. **Swipe:** swiping an item on Today replaces only that item, keeping the rest of the outfit and its locks.
+    - The choices are items of the same category that pass rules 1–4 (rule 4 only with a forecast), keep rules 6 and 7 with the rest of the outfit, and don't make a disliked outfit. A coat's choices pass rules 1–3 only, as in rule 9.
+    - They're ordered by when they were added, and the swiped item is among them. Swiping left goes to the next one, swiping right to the previous one, wrapping around.
+    - A locked item doesn't swipe. If nothing else fits, the item stays and the note says "No other {category} fits."
+    - The new outfit is saved for the day like any other pick. Swiping isn't a real change, so it doesn't count toward the backup reminder.
+
 An outfit's identity (its `key`) is its top, bottom or dress plus its shoes, **not** the coat. That way a disliked outfit doesn't come back just because the coat changed. 👎 saves only those IDs.
 
 ## 6. Fixed values
@@ -102,8 +109,8 @@ Jumpsuits count as `dress`, sweaters and hoodies as `top`, and jackets and coats
 | Area | Choice |
 |---|---|
 | App | Vite + React + TypeScript, installable to the home screen (PWA) |
-| Storage | IndexedDB through Dexie, with photos stored as Blobs. Asks for `navigator.storage.persist()` on launch. |
-| Writes | All writes go through `src/db/repo.ts`. Real changes (add, edit or delete an item, a dislike, comfort) bump `changesSinceBackup` in the same transaction. Temporary state (hamper, Not today, occasion, location, `today`) doesn't. |
+| Storage | IndexedDB through Dexie, with photos stored as Blobs in their own `photos` table (below). Asks for `navigator.storage.persist()` on launch. |
+| Writes | All writes go through `src/db/repo.ts`. Real changes (add, edit or delete an item, a dislike, comfort) bump `changesSinceBackup` in the same transaction. Temporary state (hamper, Not today, occasion, location, `today`) doesn't. A write that fails shows a message instead of failing silently. |
 | Picker | A pure function in `src/closet/picker.ts`: items, settings, forecast, locks, the current outfit, dislikes and a `random()` go in; an outfit (or a "nothing fits" message) and its notes come out. No database or React inside, so rule tests are plain unit tests. |
 | Validation | zod, for import files |
 | Offline | A service worker caches the built app. Weather needs a connection (§5, rule 11). |
@@ -113,13 +120,15 @@ Jumpsuits count as `dress`, sweaters and hoodies as `top`, and jackets and coats
 **Data model**
 ```ts
 Item     { id /* auto-increment */, name, category, color, pattern, occasions[], seasons[],
-           warmth: 1|2|3, brand?, photo?: Blob, inHamper, skipDate?: 'YYYY-MM-DD', createdAt }
+           warmth: 1|2|3, brand?, inHamper, skipDate?: 'YYYY-MM-DD', createdAt }
+Photo    { itemId /* primary key, = Item.id */, blob: Blob }
 Outfit   { key /* base + shoes ids, sorted numerically, joined with '|' */, itemIds[], rating: 'dislike' }
 Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } /* rounded to ~1km */,
            lastBackupAt?, changesSinceBackup,
            today?: { date: 'YYYY-MM-DD', itemIds[] /* incl. coat */, locked[],
                      forecast?: { high, low, rainChance } } }
 ```
+- **Why photos have their own table:** an update rewrites the whole record. When the photo lived on the item, Laundry done re-saved every photo in the hamper, and on the iPhone the items stayed in the hamper until the app was closed and reopened, then showed no photos until it was reopened again (phone test 1). Now hamper, Not today and item edits that keep the photo never touch the `photos` table. Deleting an item deletes its photo in the same transaction. Database version 3 moves existing photos over.
 - Sort the IDs numerically: the default sort puts `10` before `9`.
 - `today` is replaced as a whole when the date changes. It's left out of backups, and an import clears it.
 - Dates are the device's local date, never UTC.
@@ -130,7 +139,7 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
   "settings": { ... }, "items": [{ "id": 17, ..., "photo": "data:image/jpeg;base64,..." }],
   "outfits": [{ "itemIds": [3, 17], "rating": "dislike" }] }
 ```
-- **Photos embedded as base64:** about 100KB each, so 150 items come to about 15MB.
+- **Photos embedded as base64:** about 100KB each, so 150 items come to about 15MB. Each photo stays on its item in the file, so the `photos` table doesn't change the format or its `version`.
 - **Checks before writing:** the `app` and `version` fields first, then every record against the zod schemas. A broken file, or one from a newer version, changes nothing and shows a clear message.
 - **All or nothing:** the import runs in one transaction. It clears the closet, writes the backup with its original IDs so dislikes still point at the right items, clears `today`, sets `lastBackupAt` and resets the change count.
 - **Saving:** `navigator.share` with a file where that works, otherwise a download. The installed iPhone app never falls back to a download, because one can fail there without saying so.
@@ -143,9 +152,19 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
    - Add the service worker and the iPhone install banner.
 2. **Today (done):** location and weather, the picker (§5), the saved daily outfit, lock, Not today, 👎, and Settings with Comfort and Location.
 3. **Backup (done):** export, import and the status line (Flow E). Spike 0.2 (iOS share sheet) passed first, on 2026-10-27, see `spikes/RESULTS.md`.
+4. **Phone test 1 fixes:** from using the app on an iPhone, 2026-10-28.
+   - **Hamper bug:** the `photos` table (§7) and messages for failed writes. Add a test that Laundry done leaves the `photos` table untouched.
+   - **Cutouts:** fill transparent areas with white before the JPEG is made, and skip transparent pixels in auto color (Flow B, §4).
+   - **Swipe** to change one item (§5, rule 12).
+   - **Spike 0.3, category from the photo:** a test page at `public/spike/`, deleted once the results are in `spikes/RESULTS.md`. It runs an on-device zero-shot image model in the browser (a CLIP-style model through transformers.js) against the five categories, described in words ("a shirt or sweater", "pants, shorts or a skirt", "a dress or jumpsuit", "shoes", "a jacket or coat"). Run it in the same session as phone test 2, on the photos taken for it. Pass criteria, from the installed app on the iPhone:
+     - at least 18 of 20 real photos get the right category
+     - under 3 seconds per photo once the model is loaded
+     - the one-time download is under 100MB and works offline afterwards
+     - no crash or reload
+   - If spike 0.3 passes, step 5 builds it in: the category is pre-selected from the photo the way the color is, and you can change it. If it fails, the form starts on the last category used instead.
 
 ## 9. Later, if it's missed
-Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules · replacing only the slot that changed instead of re-picking.
+Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules · removing the background in the app (the iPhone cutout covers it for now).
 
 ## 10. Testing
 - **Unit tests for the picker:**
@@ -159,4 +178,6 @@ Liked outfits · color modes (tonal, complementary) · automatic dirty tracking 
   - no forecast: warmth and coat skipped
 - **Today's outfit:** reopening the same day keeps it, a new day re-picks and clears locks, and sending a shown item to the hamper re-picks while keeping locks.
 - **Backup round trip:** export → import gives back identical items, photos and dislikes, and `today` is cleared. A truncated or wrong-version file changes nothing.
-- **Manual:** install on a phone, catalog 20 items, check a cold day and a warm day, deny geolocation and type a city, open it offline, use the hamper, then delete the app, reinstall and import a backup.
+- **Swipe:** left and right step through the slot's choices and wrap around, a locked item doesn't swipe, choices keep rules 6 and 7 and skip dislikes, and the "No other {category} fits" note.
+- **Manual (phone test):** install on a phone, catalog 20 items, check a cold day and a warm day, deny geolocation and type a city, open it offline, use the hamper, then delete the app, reinstall and import a backup.
+  - **Phone test 2 adds:** after Laundry done and "Take out", items leave the hamper at once and keep their photos, without reopening the app. Existing photos survive the update to database version 3. A cutout photo saves with a white background and the right auto color. Swipe works on each slot. Run spike 0.3 in the same session.
