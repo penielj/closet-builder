@@ -23,7 +23,8 @@ export interface Item {
 // (DESIGN §7, "Why photos have their own table").
 export interface ItemPhoto {
   itemId: ItemId
-  blob: Blob
+  blob: Blob // JPEG, the garment on white
+  mask?: Blob // PNG from the cutout: gray level = how opaque, so the garment can sit on black too (DESIGN §4 "Look")
 }
 
 export interface Outfit {

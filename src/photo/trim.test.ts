@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { garmentBounds } from './trim'
+import { garmentBounds, maskBounds } from './trim'
 
 // A w×h white image with a dark box at x0..x1, y0..y1 (inclusive).
 function photo(w: number, h: number, box?: [number, number, number, number]) {
@@ -27,5 +27,15 @@ describe('garmentBounds', () => {
     expect(garmentBounds(px, 50, 50)).toBeUndefined()
     px.set([230, 230, 230, 255], (10 * 50 + 10) * 4)
     expect(garmentBounds(px, 50, 50)).toEqual({ x: 9, y: 9, w: 3, h: 3 })
+  })
+})
+
+describe('maskBounds', () => {
+  it('boxes where the mask is light, ignoring near-black noise', () => {
+    const px = new Uint8ClampedArray(100 * 100 * 4) // black, opaque
+    for (let i = 3; i < px.length; i += 4) px[i] = 255
+    px.set([10, 10, 10, 255], (5 * 100 + 5) * 4) // noise: still background
+    for (let y = 20; y <= 59; y++) for (let x = 40; x <= 79; x++) px.set([255, 255, 255, 255], (y * 100 + x) * 4)
+    expect(maskBounds(px, 100, 100)).toEqual({ x: 38, y: 18, w: 44, h: 44 })
   })
 })

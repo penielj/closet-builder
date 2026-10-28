@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Forecast, type Item, outfitKey } from '../db/schema'
 import {
-  NO_COAT, ONLY_OUTFIT, type PickInput, type SwipeInput, coatWanted, feelsLike, pickOutfit, seasonOf, slotChoices, targetWarmth,
+  NO_COAT, NO_SWEATER, ONLY_OUTFIT, type PickInput, type SwipeInput, coatWanted, feelsLike, pickOutfit, seasonOf, slotChoices, targetWarmth,
   whyNotFor,
 } from './picker'
 
@@ -431,5 +431,75 @@ describe('shuffle changes as much as it can (rule 8)', () => {
     const r = pick({ items: [tee, item('top'), b1, b2, shoes, s2], locked: [tee.id], current: outfitKey([tee.id, b1.id, shoes.id]) })
     expect(r.ok && r.itemIds).toEqual([tee.id, b2.id, s2.id])
     expect(r.ok && r.notes).toEqual([])
+  })
+})
+
+describe('layers: sweater (rule 13), hat and bag (rule 14)', () => {
+  const base = () => [item('top'), item('bottom'), item('shoes')]
+  const COOL: Forecast = { high: 17, low: 16, rainChance: 0 } // sweater, no coat
+  const WARM: Forecast = { high: 18, low: 16, rainChance: 0 } // no sweater
+  const ids = (r: ReturnType<typeof pick>) => (r.ok ? r.itemIds : [])
+
+  it('adds a sweater after the base when the feels-like high is below 18°C, with the comfort offset', () => {
+    const sweater = item('sweater')
+    const items = [...base(), sweater]
+    expect(ids(pick({ items, forecast: COOL }))).toContain(sweater.id)
+    expect(ids(pick({ items, forecast: WARM }))).not.toContain(sweater.id)
+    const cold = { comfortOffset: 3 as const, lastOccasion: 'casual' as const, location: LONDON } // 18 feels like 15
+    expect(ids(pick({ items, forecast: WARM, settings: cold }))).toContain(sweater.id)
+    expect(ids(pick({ items, forecast: undefined }))).not.toContain(sweater.id) // no weather, no sweater
+  })
+
+  it('counts the sweater in rules 6 and 7, and says when none goes with the base', () => {
+    const red = item('top', { color: 'red' })
+    const checked = item('bottom', { pattern: 'checked' }) // so a striped sweater makes two patterns
+    const items = [red, checked, item('shoes'), item('sweater', { color: 'green' }), item('sweater', { pattern: 'striped', color: 'navy' })]
+    expect(pick({ items, forecast: COOL })).toMatchObject({ ok: true, notes: [NO_SWEATER] })
+    const ok = item('sweater', { color: 'red' })
+    expect(ids(pick({ items: [...items, ok], forecast: COOL }))).toContain(ok.id)
+  })
+
+  it('says nothing about sweaters when there are none at all', () => {
+    expect(pick({ items: base(), forecast: COOL })).toMatchObject({ ok: true, notes: [] })
+  })
+
+  it('keeps a locked sweater whatever the weather, and only picks bases that go with it', () => {
+    const green = item('sweater', { color: 'green' })
+    const red = item('top', { color: 'red' }), plain = item('top')
+    const r = pick({ items: [red, plain, item('bottom'), item('shoes'), green], forecast: WARM, locked: [green.id] })
+    expect(ids(r)).toContain(green.id)
+    expect(ids(r)).toContain(plain.id)
+  })
+
+  it('adds a hat and a bag last when one passes rules 1–3, whatever their colors', () => {
+    const hat = item('hat', { color: 'yellow' }), bag = item('bag', { pattern: 'print', color: 'pink' })
+    const outfit = ids(pick({ items: [...base(), hat, bag, item('hat', { inHamper: true })], forecast: WARM }))
+    expect(outfit.slice(-2)).toEqual([hat.id, bag.id])
+    expect(ids(pick({ items: base(), forecast: WARM }))).toHaveLength(3) // none: no note, nothing added
+  })
+
+  it('leaves layers out of the outfit key, so a 👎 is about the base', () => {
+    const items = [...base(), item('sweater'), item('hat')]
+    const r = pick({ items, forecast: COOL })
+    expect(r.ok && r.key).toBe(outfitKey(items.slice(0, 3).map((i) => i.id)))
+  })
+})
+
+describe('slot choices for layers (rule 12)', () => {
+  it('a sweater keeps rules 6 and 7 with the base; a hat only needs rules 1–3', () => {
+    const top = item('top', { color: 'red' }), bottom = item('bottom'), shoes = item('shoes')
+    const s1 = item('sweater', { createdAt: '2026-10-01T00:00:00.000Z' })
+    const green = item('sweater', { color: 'green', createdAt: '2026-10-02T00:00:00.000Z' })
+    const h1 = item('hat'), h2 = item('hat', { color: 'green', pattern: 'print' })
+    const input = {
+      items: [top, bottom, shoes, s1, green, h1, h2], settings: { comfortOffset: 0 as const, lastOccasion: 'casual' as const, location: LONDON },
+      forecast: MILD, date: DATE, locked: [], dislikes: new Set<string>(), outfit: [top.id, bottom.id, shoes.id, s1.id, h1.id],
+    }
+    expect(slotChoices(input, s1.id).map((i) => i.id)).toEqual([s1.id])
+    expect(slotChoices(input, h1.id).map((i) => i.id)).toEqual([h1.id, h2.id])
+    // Swiping the top has to go with the sweater on too: with a green one, no other red top is offered.
+    const other = item('top', { color: 'red', createdAt: '2026-10-03T00:00:00.000Z' })
+    const tops = slotChoices({ ...input, items: [...input.items, other], outfit: [top.id, bottom.id, shoes.id, green.id] }, top.id)
+    expect(tops.map((i) => i.id)).toEqual([top.id])
   })
 })

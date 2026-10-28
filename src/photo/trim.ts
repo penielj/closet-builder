@@ -9,12 +9,17 @@ export interface Bounds { x: number; y: number; w: number; h: number }
 
 // The smallest box around every non-white pixel of an RGBA image, plus the margin, or
 // undefined when the image is all white.
-export function garmentBounds(px: Uint8ClampedArray, w: number, h: number): Bounds | undefined {
+export const garmentBounds = (px: Uint8ClampedArray, w: number, h: number) =>
+  boundsWhere(w, h, (i) => px[i] < WHITE || px[i + 1] < WHITE || px[i + 2] < WHITE)
+
+// The same for a cutout mask: the garment is where the mask isn't (nearly) black.
+export const maskBounds = (px: Uint8ClampedArray, w: number, h: number) => boundsWhere(w, h, (i) => px[i] > 16)
+
+function boundsWhere(w: number, h: number, isGarment: (i: number) => boolean): Bounds | undefined {
   let left = w, top = h, right = -1, bottom = -1
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4
-      if (px[i] >= WHITE && px[i + 1] >= WHITE && px[i + 2] >= WHITE) continue
+      if (!isGarment((y * w + x) * 4)) continue
       if (x < left) left = x
       if (x > right) right = x
       if (y < top) top = y
@@ -37,6 +42,35 @@ export function trimPhoto(blob: Blob): Promise<Blob> {
     trimmed.set(blob, result)
   }
   return result
+}
+
+const cut = new WeakMap<Blob, Promise<Blob>>()
+
+// A cutout: the photo with its mask as transparency, trimmed to the garment, as a PNG, so
+// it can sit on white or black (DESIGN §4 "Look"). Cached per photo Blob.
+export function cutPhoto(blob: Blob, mask: Blob): Promise<Blob> {
+  let result = cut.get(blob)
+  if (!result) {
+    result = applyMask(blob, mask).catch(() => trimPhoto(blob))
+    cut.set(blob, result)
+  }
+  return result
+}
+
+async function applyMask(blob: Blob, mask: Blob): Promise<Blob> {
+  const [bmp, m] = await Promise.all([createImageBitmap(blob), createImageBitmap(mask)])
+  const { width: w, height: h } = bmp
+  const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h })
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  ctx.drawImage(m, 0, 0, w, h)
+  const alpha = ctx.getImageData(0, 0, w, h).data
+  ctx.drawImage(bmp, 0, 0)
+  const px = ctx.getImageData(0, 0, w, h)
+  for (let i = 0; i < px.data.length; i += 4) px.data[i + 3] = alpha[i]
+  const b = maskBounds(alpha, w, h) ?? { x: 0, y: 0, w, h }
+  const out = Object.assign(document.createElement('canvas'), { width: b.w, height: b.h })
+  out.getContext('2d')!.putImageData(px, -b.x, -b.y)
+  return new Promise((resolve, reject) => out.toBlob((t) => (t ? resolve(t) : reject(new Error('no cutout'))), 'image/png'))
 }
 
 async function trim(blob: Blob): Promise<Blob> {

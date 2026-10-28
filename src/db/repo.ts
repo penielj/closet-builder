@@ -19,22 +19,25 @@ async function tracked<T>(db: ClosetDB, tables: Table[], fn: () => Promise<T>): 
   })
 }
 
-export type NewItem = Omit<Item, 'id' | 'inHamper' | 'createdAt'> & { photo?: Blob }
-// `photo`: left out keeps the stored photo, null removes it, a Blob replaces it.
-export type ItemPatch = Partial<Omit<Item, 'id' | 'inHamper' | 'skipDate' | 'createdAt'>> & { photo?: Blob | null }
+export type NewItem = Omit<Item, 'id' | 'inHamper' | 'createdAt'> & { photo?: Blob; mask?: Blob }
+// `photo`: left out keeps the stored photo, null removes it, a Blob replaces it, together
+// with its cutout `mask` if it has one.
+export type ItemPatch = Partial<Omit<Item, 'id' | 'inHamper' | 'skipDate' | 'createdAt'>> & { photo?: Blob | null; mask?: Blob }
 
-export const addItem = (db: ClosetDB, { photo, ...item }: NewItem, now = new Date()) =>
+const photoRecord = (itemId: ItemId, blob: Blob, mask?: Blob) => ({ itemId, blob, ...(mask && { mask }) })
+
+export const addItem = (db: ClosetDB, { photo, mask, ...item }: NewItem, now = new Date()) =>
   tracked(db, [db.items, db.photos], async () => {
     const id = await db.items.add({ ...item, inHamper: false, createdAt: now.toISOString() })
-    if (photo) await db.photos.add({ itemId: id, blob: photo })
+    if (photo) await db.photos.add(photoRecord(id, photo, mask))
     return id
   })
 
-export const updateItem = (db: ClosetDB, id: ItemId, { photo, ...patch }: ItemPatch) =>
+export const updateItem = (db: ClosetDB, id: ItemId, { photo, mask, ...patch }: ItemPatch) =>
   tracked(db, [db.items, db.photos], async () => {
-    await db.items.update(id, patch)
+    if (Object.keys(patch).length) await db.items.update(id, patch)
     if (photo === null) await db.photos.delete(id)
-    else if (photo) await db.photos.put({ itemId: id, blob: photo })
+    else if (photo) await db.photos.put(photoRecord(id, photo, mask))
   })
 
 export const deleteItem = (db: ClosetDB, id: ItemId) =>
@@ -105,11 +108,14 @@ export const saveForecast = (db: ClosetDB, date: string, forecast: Forecast) =>
 // Each item carries its photo, as in the backup file.
 export const readSnapshot = (db: ClosetDB): Promise<Snapshot> =>
   db.transaction('r', [db.items, db.photos, db.outfits, db.settings], async () => {
-    const photos = new Map((await db.photos.toArray()).map((p) => [p.itemId, p.blob]))
+    const photos = new Map((await db.photos.toArray()).map((p) => [p.itemId, p]))
     const items = await db.items.orderBy('id').toArray()
     return {
       settings: (await db.settings.get(SETTINGS_KEY))!,
-      items: items.map((i) => (photos.has(i.id) ? { ...i, photo: photos.get(i.id) } : i)),
+      items: items.map((i) => {
+        const p = photos.get(i.id)
+        return p ? { ...i, photo: p.blob, ...(p.mask && { mask: p.mask }) } : i
+      }),
       outfits: await db.outfits.toArray(),
     }
   })
@@ -131,8 +137,8 @@ export const importBackup = (db: ClosetDB, backup: Backup, now = new Date()) =>
     await db.items.clear()
     await db.photos.clear()
     await db.outfits.clear()
-    await db.items.bulkAdd(backup.items.map(({ photo: _photo, ...item }) => item))
-    await db.photos.bulkAdd(backup.items.filter((i) => i.photo).map((i) => ({ itemId: i.id, blob: i.photo! })))
+    await db.items.bulkAdd(backup.items.map(({ photo: _photo, mask: _mask, ...item }) => item))
+    await db.photos.bulkAdd(backup.items.filter((i) => i.photo).map((i) => photoRecord(i.id, i.photo!, i.mask)))
     await db.outfits.bulkPut(backup.outfits.map((o) => ({ key: outfitKey(o.itemIds), itemIds: sortIds(o.itemIds), rating: o.rating })))
     await db.settings.put({ ...backup.settings, lastBackupAt: now.toISOString(), changesSinceBackup: 0 }, SETTINGS_KEY)
   })

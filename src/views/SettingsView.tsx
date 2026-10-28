@@ -1,11 +1,14 @@
-import { type ChangeEvent, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { type ChangeEvent, useRef, useState } from 'react'
 import { BackupError, backupFileName, buildBackupFile, parseBackup } from '../backup/file'
 import { backupStatus, saveFile } from '../backup/save'
 import { localDate } from '../closet/daily'
 import LocationPicker from '../components/LocationPicker'
 import { db } from '../db'
-import { importBackup, markBackedUp, readSnapshot, setComfortOffset } from '../db/repo'
+import { importBackup, markBackedUp, readSnapshot, setComfortOffset, updateItem } from '../db/repo'
 import type { Settings } from '../db/schema'
+import { cutout } from '../photo/cutout'
+import { loadImage, processPhoto } from '../photo/resize'
 
 // DESIGN Flow E.
 const COMFORT: { value: Settings['comfortOffset']; label: string }[] = [
@@ -49,8 +52,59 @@ export default function SettingsView({ settings, itemCount }: { settings: Settin
         <p className="muted">Used for the weather and the season. It's stored to about 1km.</p>
       </div>
 
+      <Cutouts />
       <Backup settings={settings} itemCount={itemCount} />
     </section>
+  )
+}
+
+// Cuts out photos saved before the cutout existed, or added with it off, so they sit on
+// black in dark mode too (DESIGN §4 "Look"). One at a time, and it can be stopped.
+function Cutouts() {
+  const left = useLiveQuery(() => db.photos.filter((p) => !p.mask).primaryKeys(), [])
+  const [status, setStatus] = useState<string>()
+  const [running, setRunning] = useState(false)
+  const stop = useRef(false)
+
+  async function run() {
+    const ids = left ?? []
+    stop.current = false
+    setRunning(true)
+    let done = 0, failed = 0
+    for (const [n, itemId] of ids.entries()) {
+      if (stop.current) break
+      setStatus(`Cutting out ${n + 1} of ${ids.length}…`)
+      try {
+        const stored = await db.photos.get(itemId)
+        if (!stored || stored.mask) continue
+        const onProgress = (loaded: number, total: number) =>
+          setStatus(`Downloading the cutout model, just this once: ${Math.round(loaded / 1048576)}MB of ${Math.round(total / 1048576)}MB…`)
+        const result = await processPhoto(await cutout(await loadImage(stored.blob), onProgress))
+        if (!result.mask) throw new Error('nothing was cut out')
+        await updateItem(db, itemId, { photo: result.photo, mask: result.mask })
+        done++
+      } catch {
+        failed++
+      }
+    }
+    setRunning(false)
+    setStatus(`Cut out ${done} ${done === 1 ? 'photo' : 'photos'}${failed ? `; ${failed} couldn't be done` : ''}${stop.current ? ' before stopping' : ''}.`)
+  }
+
+  if (!left) return null
+  return (
+    <div className="panel">
+      <h2>Cutouts</h2>
+      <p className="muted">
+        {left.length
+          ? `${left.length} ${left.length === 1 ? 'photo isn\'t' : 'photos aren\'t'} cut out yet, so in dark mode ${left.length === 1 ? 'it shows' : 'they show'} on a white square. Lay-flat or hung-up photos work best.`
+          : 'Every photo is cut out.'}
+      </p>
+      {running
+        ? <button onClick={() => { stop.current = true }}>Stop</button>
+        : left.length > 0 && <button className="primary" onClick={run}>Cut out {left.length} {left.length === 1 ? 'photo' : 'photos'}</button>}
+      {status && <p className="muted" role="status">{status}</p>}
+    </div>
   )
 }
 

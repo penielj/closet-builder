@@ -1,6 +1,6 @@
 # Closet Builder: Design Doc
 
-**Status:** v9 (phone test 1 fixes specified) · **Date:** 2026-10-28 · **Author:** Peniel Johnson
+**Status:** v10 (layers, photography look) · **Date:** 2026-10-28 · **Author:** Peniel Johnson
 
 ## 1. Summary
 Closet Builder is a personal web app, installable on your phone. Each morning it suggests an outfit made only from clothes you own that are **clean today**, chosen to suit the weather and the occasion. Everything stays on the device, with no account and no server.
@@ -23,7 +23,7 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
 - **Location.** The first time Today opens, the app asks for geolocation. If that's denied or fails, Today shows a city box instead of an outfit. After that the saved location is used every day. The weather line has a **Change** link that asks for geolocation again or takes a new city.
 - **Weather.** The app waits up to 5 seconds for today's forecast, then shows the outfit with or without it (§5, "No weather"). The weather line shows the actual high and low, not the comfort-adjusted ones, plus the chance of rain.
 - **Occasion.** A row of the four occasions, with the one from last time selected. Changing it picks a new outfit, keeping locked items.
-- **The outfit.** The app shows one outfit as a flat lay, like a store's outfit shot: the pieces stacked tight on one white canvas, top first, then bottom (or dress), shoes and coat, with no text between them. Each photo is trimmed to its garment, and each slot's height follows its category, so a shirt comes out wide and trousers tall. Below the flat lay, a list names each piece (brand, name) with its **Not today** and **Hamper** links. On it you can:
+- **The outfit.** The app shows one outfit as a grid of equal squares, two across, like product shots: shirt and pants (or a dress) first, then the layers picked to go with them: sweater, shoes, jacket, hat and bag (§5). Each garment is trimmed and shown cut out on the page itself, white or black in dark mode, with no text in the grid. Below it, a list names each piece (brand, name) with its **Not today** and **Hamper** links. On it you can:
   - **Swipe** a piece's photo sideways to change only that piece (§5, rule 12). The photo follows the finger and snaps to the next choice, and a counter ("2/4") shows where you are.
   - **Lock** a piece with the lock icon in its photo's top-right corner, so it stays when you shuffle. A locked piece doesn't swipe.
   - Mark a piece **Not today**, which excludes it until midnight. In the Closet tab it's dimmed with a **Wear today** button that undoes it.
@@ -40,7 +40,7 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 
 **D. Hamper.** Any item can go **→ Hamper**, and hamper items are never suggested. The top bar shows "HAMPER (7)". **Laundry done** returns everything at once.
 
-**E. Settings.** Opened from **SETTINGS** in the top bar. Step 2 builds it with **Comfort** and **Location**. Step 3 adds **Backup**:
+**E. Settings.** Opened from **SETTINGS** in the top bar. A **Cutouts** panel says how many photos aren't cut out yet (they show on a white square in dark mode) and has **Cut out N photos**, which cuts them out one at a time with progress and a **Stop** button. Step 2 builds it with **Comfort** and **Location**. Step 3 adds **Backup**:
 - **Export closet** builds one `.closet.json` file that includes the photos. **Save** then opens the phone's share sheet (or downloads the file on a desktop) so you can keep it in iCloud Drive or Google Drive. It's two taps because iPhones only open the share sheet straight after a tap.
 - **Import closet** picks a file. If the closet isn't empty, the app asks "Replace your 42 items with the 38 in this backup?", then replaces everything.
 - Settings shows "Last backup: 12 days ago · 9 changes since".
@@ -48,9 +48,9 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 ## 4. Features
 | Area | Feature |
 |---|---|
-| Look | A catalog look in the spirit of SSENSE: white page, black Helvetica, square corners, small uppercase labels, filters as underlined text, and every garment shown whole (not cropped) on a white tile, which stays white in dark mode. On Today, photos are trimmed to the garment when shown: the box around every pixel that isn't near-white (all channels below 245 counts), plus a 2% margin. It's done at display time, so older photos get it too, and a photo with a real background comes back as it was (`src/photo/trim.ts`). Slot heights: top and coat min(62vw, 400px), bottom min(90vw, 560px), dress min(120vw, 720px), shoes min(34vw, 220px). |
+| Look | A clothing-photography look in the spirit of SSENSE: white page (black in dark mode), Helvetica, square corners, small uppercase labels, filters as underlined text. Garments are shown whole and alone: a photo with a cutout mask is shown with the mask as its transparency, trimmed to the garment, straight on the page's background, white or black. A photo without a mask keeps a white square, and on Today it's trimmed to its non-white pixels (all channels below 245) instead. Both trims keep a 2% margin and happen at display time, so older photos get them too (`src/photo/trim.ts`). Today's grid squares are all the same size. |
 | Closet | A photo grid filtered by category, each item with its brand (bold, uppercase) over its name. Add, edit and delete items. Hamper and Not today items are dimmed. |
-| Cutout | RMBG-1.4 (BRIA; free for non-commercial use) runs on the device through transformers.js: on the GPU at half precision (~88MB) when the phone has WebGPU, otherwise on the CPU at 8 bits (~44MB). The model predicts a mask at 1024×1024, and the photo gets that mask as its transparency before the usual resize fills it with white. The library comes from jsdelivr and is kept in Cache Storage, and the model is cached by the library, so after the first download it works offline. Any failure keeps the photo as it is, with a note (`src/photo/cutout.ts`). Worn clothes keep the person: the model keeps the subject. |
+| Cutout | RMBG-1.4 (BRIA; free for non-commercial use) runs on the device through transformers.js: on the GPU at half precision (~88MB) when the phone has WebGPU, otherwise on the CPU at 8 bits (~44MB). The model predicts a mask at 1024×1024, and the photo gets that mask as its transparency. The usual resize then saves the garment on white as the JPEG, plus the transparency as a grayscale PNG mask next to it (any photo with transparency, an iPhone cutout too, gets one), so it can also be shown on black. The library comes from jsdelivr and is kept in Cache Storage, and the model is cached by the library, so after the first download it works offline. Any failure keeps the photo as it is, with a note (`src/photo/cutout.ts`). Worn clothes keep the person: the model keeps the subject. |
 | Photos | Taken with the camera or uploaded, then resized on the device to about 800px JPEG. That also removes EXIF data, including location. Transparent areas (an iPhone cutout) are filled with white, since JPEG has no transparency and would turn them black. The add-item form suggests laying the item flat on a white sheet in daylight. |
 | Auto-whiten | When the outer 5% of the photo is a plain, light surface (average level at least 150, channel spread at most 60, little variation), each channel is scaled so that surface becomes pure white, and anything at 235 or above after scaling becomes 255. That also takes out a warm cast from indoor light. Dark, colored or busy backgrounds, and already-white ones, are left alone (`src/photo/whiten.ts`). |
 | Auto color | Samples the center 50% of the photo and snaps the dominant color to the nearest palette color. Transparent pixels are skipped, so a cutout's background isn't counted. A whitened photo is sampled after the correction, so a warm cast doesn't turn white into beige. You can override it. |
@@ -66,16 +66,16 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
    - **Feels like** = the temperature − comfort offset. If you run cold, 12°C feels like 9°C.
    - The feels-like high sets a target warmth: below 10°C heavy (3), 10–20°C medium (2), above 20°C light (1). Exactly 10°C and exactly 20°C are both medium.
    - Tops, bottoms, dresses and shoes pass when they're within ±1 of the target. On a 1–3 scale that only drops heavy items on hot days and light items on cold days, and nothing on medium days. That's intended.
-5. **Slots:** top + bottom, or a dress, then shoes, plus a coat when rule 9 calls for one.
-6. **Colors:** any number of neutrals, and at most **one** statement color, which can appear on more than one item. The coat isn't counted.
-7. **Pattern:** at most one patterned item (anything that isn't `solid`). The coat isn't counted.
+5. **Slots:** the base is a top + bottom, or a dress, with shoes. It's what outfits are built from, compared by and disliked by. The layers go on after it, in order: a sweater (rule 13), a coat (rule 9), then a hat and a bag (rule 14).
+6. **Colors:** any number of neutrals, and at most **one** statement color, which can appear on more than one item. The base and the sweater count; coats, hats and bags don't.
+7. **Pattern:** at most one patterned item (anything that isn't `solid`). The base and the sweater count; coats, hats and bags don't.
 8. **Pick:**
    - Build every valid base + shoes combo, which is fast at closet size.
    - Drop the disliked ones.
    - Drop the outfit on screen now, unless it's the only one left. In that case show it again with the note "This is the only outfit that fits."
    - Change as much as possible: keep only the outfits that share the fewest unlocked items with the one on screen (phone test 2: Shuffle kept the same top). An unlocked item that's in every outfit left gets the note "{Name} is the only {top} that fits today."
    - Pick one of those at random.
-   - Locked items are always included, even when they break rules 2–4. They still count toward rules 6 and 7. Putting a locked item in the hamper, marking it Not today or deleting it unlocks it.
+   - Locked items are always included, even when they break rules 2–4. They still count toward rules 6 and 7, and a locked sweater only allows bases that go with it. Putting a locked item in the hamper, marking it Not today or deleting it unlocks it.
 9. **Coat:** added after the base and shoes are picked, when the feels-like low is below 15°C or the chance of rain is 50% or more.
    - It's chosen from outerwear that passes rules 1–3. Rule 4's ±1 doesn't apply.
    - When the feels-like low is below 5°C, pick at random among the coats with the highest warmth. Otherwise pick any of them at random.
@@ -92,17 +92,19 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 11. **No weather:** if the forecast doesn't arrive (offline, no location yet, or the request fails), rule 4 and the coat are skipped, and the weather line says "No weather, so warmth isn't checked." A forecast already fetched today is reused without a new request.
 
 12. **Swipe:** each piece on Today is a carousel of its slot's choices. Settling on another one replaces only that piece, keeping the rest of the outfit and its locks.
-    - The choices are items of the same category that pass rules 1–4 (rule 4 only with a forecast), keep rules 6 and 7 with the rest of the outfit, and don't make a disliked outfit. A coat's choices pass rules 1–3 only, as in rule 9. They're worked out again whenever the outfit changes, so changing the top can change what the bottom offers.
+    - The choices are items of the same category that pass rules 1–4 (rule 4 only with a forecast), keep rules 6 and 7 with the rest of the outfit (sweater included), and don't make a disliked outfit. A sweater's choices pass rules 1–3, 6 and 7. A coat's, hat's or bag's pass rules 1–3 only. They're worked out again whenever the outfit changes, so changing the top can change what the bottom offers.
     - They're ordered by when they were added, and the piece on screen is among them. The carousel is a native horizontal scroller that snaps one photo at a time (no wrapping), and a choice counts once the scrolling has stopped for 120ms, and only if a finger, trackpad or wheel started it. A resize or rotation also moves a snapping scroller; that snaps back instead of changing the outfit.
     - A locked piece shows only itself and doesn't scroll. With nothing else to choose, the carousel has one photo and no counter.
     - The new outfit is saved for the day like any other pick. Swiping isn't a real change, so it doesn't count toward the backup reminder.
+13. **Sweater:** added after the base when the feels-like high is below 18°C (with the comfort offset; no forecast, no sweater). It's chosen at random from sweaters that pass rules 1–3 and keep rules 6 and 7 with the base. Rule 4 doesn't apply. If none goes with the base, the note says "No clean sweater goes with this," but only when there are any sweaters at all. A locked sweater is always shown.
+14. **Hat and bag:** picked last, at random from those that pass rules 1–3, whenever there is one; without one nothing is added and nothing is said. A locked one is always shown. They're accessories, so rules 6 and 7 don't count them.
 
 An outfit's identity (its `key`) is its top, bottom or dress plus its shoes, **not** the coat. That way a disliked outfit doesn't come back just because the coat changed. 👎 saves only those IDs.
 
 ## 6. Fixed values
 | Tag | Values |
 |---|---|
-| Category | `top`, `bottom`, `dress`, `shoes`, `outerwear` |
+| Category | `top`, `bottom`, `dress`, `sweater`, `shoes`, `outerwear`, `hat`, `bag` (in outfit order). The last three, and `sweater`, were added in v10; adding values needs no backup version bump. |
 | Pattern | `solid`, `striped`, `checked`, `print` |
 | Occasion | `casual`, `work`, `formal`, `workout`. Every item needs at least one. |
 | Season | `spring`, `summer`, `autumn`, `winter`. Empty means every season. |
@@ -112,7 +114,7 @@ An outfit's identity (its `key`) is its top, bottom or dress plus its shoes, **n
 - **Neutrals:** black, white, grey, navy, denim, beige and brown.
 - **Statement colors:** red, burgundy, pink, orange, yellow, olive, green, teal, blue, light-blue and purple.
 
-Jumpsuits count as `dress`, sweaters and hoodies as `top`, and jackets and coats as `outerwear`. Backup files store these strings, so renaming or removing one needs a backup `version` bump.
+Jumpsuits count as `dress`; sweaters, cardigans and hoodies as `sweater` (before v10 they were `top`: move them in Closet); jackets and coats as `outerwear`. Backup files store these strings, so renaming or removing one needs a backup `version` bump.
 
 ## 7. Technical design
 | Area | Choice |
@@ -130,7 +132,7 @@ Jumpsuits count as `dress`, sweaters and hoodies as `top`, and jackets and coats
 ```ts
 Item     { id /* auto-increment */, name, category, color, pattern, occasions[], seasons[],
            warmth: 1|2|3, brand?, inHamper, skipDate?: 'YYYY-MM-DD', createdAt }
-Photo    { itemId /* primary key, = Item.id */, blob: Blob }
+Photo    { itemId /* primary key, = Item.id */, blob: Blob /* JPEG on white */, mask?: Blob /* PNG, from a cutout */ }
 Outfit   { key /* base + shoes ids, sorted numerically, joined with '|' */, itemIds[], rating: 'dislike' }
 Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } /* rounded to ~1km */,
            lastBackupAt?, changesSinceBackup,
@@ -148,7 +150,7 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
   "settings": { ... }, "items": [{ "id": 17, ..., "photo": "data:image/jpeg;base64,..." }],
   "outfits": [{ "itemIds": [3, 17], "rating": "dislike" }] }
 ```
-- **Photos embedded as base64:** about 100KB each, so 150 items come to about 15MB. Each photo stays on its item in the file, so the `photos` table doesn't change the format or its `version`.
+- **Photos embedded as base64:** about 100KB each, so 150 items come to about 15MB. Each photo stays on its item in the file, so the `photos` table doesn't change the format or its `version`. A cutout's mask is an optional `mask` data URL next to `photo`; older files simply have none, and older apps drop it.
 - **Checks before writing:** the `app` and `version` fields first, then every record against the zod schemas. A broken file, or one from a newer version, changes nothing and shows a clear message.
 - **All or nothing:** the import runs in one transaction. It clears the closet, writes the backup with its original IDs so dislikes still point at the right items, clears `today`, sets `lastBackupAt` and resets the change count.
 - **Saving:** `navigator.share` with a file where that works, otherwise a download. The installed iPhone app never falls back to a download, because one can fail there without saying so.
@@ -175,6 +177,7 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
    - **Spike 0.4, background removal:** RMBG-1.4 on the same spike page and library, in the same session as 0.3, on 20 photos of clothes laid flat or hung on ordinary backgrounds. Pass: at least 16 rated Good, under 5 seconds per photo, no crash or reload. Its license allows non-commercial use only, which fits a personal app. Criteria and the Mac numbers are in `spikes/RESULTS.md`.
    - **Cutout in Add item, built before spike 0.4 ran** (2026-10-28, by choice): the SSENSE look needs it, and it falls back to the plain photo on any failure, with a **Use photo as is** button for a slow one. Spike 0.4 still decides whether it stays on by default and which device it prefers; the total download with category recognition gets decided with both results in hand.
    - **SSENSE look** (§4 "Look") and the swipe carousel on Today (rule 12), replacing the 50px swipe gesture, which had no feedback while dragging.
+   - **v10, from the second round of feedback:** Today as a grid of equal squares; the base (shirt and pants) picked first, then a sweater by weather, the coat, a hat and a bag (rules 5, 13, 14; new categories `sweater`, `hat`, `bag`); garments shown cut out on white or black by theme, with the cutout mask stored next to each photo and a **Cut out N photos** button in Settings for older ones.
 
 ## 9. Later, if it's missed
 Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules.

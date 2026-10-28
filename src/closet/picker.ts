@@ -1,5 +1,5 @@
 import { type Forecast, type Item, type ItemId, type Settings, outfitKey } from '../db/schema'
-import { NEUTRALS, type Occasion, type Season, type Warmth, label } from '../db/values'
+import { type Category, NEUTRALS, type Occasion, type Season, type Warmth, label } from '../db/values'
 
 // The outfit rules of DESIGN §5, as a pure function: no database or React in here.
 
@@ -24,6 +24,8 @@ export type PickResult =
 
 export const ONLY_OUTFIT = 'This is the only outfit that fits.'
 export const NO_COAT = 'No clean coat.'
+export const NO_SWEATER = 'No clean sweater goes with this.'
+export const SWEATER_BELOW = 18 // °C, feels-like high (rule 13)
 
 // Rule 3: seasons by month, swapped south of the equator.
 const NORTH: Season[] = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter']
@@ -46,7 +48,16 @@ export function targetWarmth(feelsHigh: number): Warmth {
 export const coatWanted = (forecast: Forecast, comfortOffset: number) =>
   feelsLike(forecast.low, comfortOffset) < 15 || forecast.rainChance >= 50
 
-export const isBase = (i: Pick<Item, 'category'>) => i.category !== 'outerwear'
+// Rule 13: when it's cool enough for a sweater.
+export const sweaterWanted = (forecast: Forecast, comfortOffset: number) =>
+  feelsLike(forecast.high, comfortOffset) < SWEATER_BELOW
+
+// Rule 5: the base is a top and a bottom (or a dress) with shoes. It's what outfits are
+// built from, compared and disliked by. Sweaters, coats, hats and bags are layered on after.
+const BASE: ReadonlySet<Category> = new Set(['top', 'bottom', 'dress', 'shoes'])
+export const isBase = (i: Pick<Item, 'category'>) => BASE.has(i.category)
+// Rules 6 and 7 count the base and the sweater, which shows over the top.
+const counted = (i: Pick<Item, 'category'>) => isBase(i) || i.category === 'sweater'
 
 const available = (i: Item, date: string) => !i.inHamper && i.skipDate !== date // rule 1
 
@@ -81,10 +92,12 @@ export function pickOutfit(input: PickInput): PickResult {
   const byId = new Map(items.map((i) => [i.id, i]))
   const locked = input.locked.map((id) => byId.get(id)).filter((i): i is Item => !!i && available(i, date))
 
+  const lockedSweater = locked.filter((i) => i.category === 'sweater')
   const attempt = (checkWarmth: boolean) => {
     const target = checkWarmth && forecast ? targetWarmth(feelsLike(forecast.high, settings.comfortOffset)) : undefined
     const passes = (i: Item) => fitsDay(i) && (target === undefined || Math.abs(i.warmth - target) <= 1)
-    return combos(items, locked, passes).filter((c) => !input.dislikes.has(outfitKey(c.map((i) => i.id))))
+    return combos(items, locked, passes)
+      .filter((c) => !input.dislikes.has(outfitKey(c.map((i) => i.id))) && goesTogether([...c, ...lockedSweater]))
   }
 
   let options = attempt(true)
@@ -109,11 +122,15 @@ export function pickOutfit(input: PickInput): PickResult {
   }
   const base = options[Math.floor(random() * options.length)]
 
+  // Then the layers, in order (rules 13, 9 and 14).
+  const sweater = pickSweater(items, locked, fitsDay, base, forecast, settings.comfortOffset, random)
+  if (sweater === null) notes.push(NO_SWEATER)
   const coat = pickCoat(items, locked, fitsDay, forecast, settings.comfortOffset, random)
   if (coat === null) notes.push(NO_COAT)
+  const accessories = (['hat', 'bag'] as const).map((c) => pickAccessory(c, items, locked, fitsDay, random))
 
   const key = outfitKey(base.map((i) => i.id))
-  const itemIds = [...base, ...(coat ? [coat] : [])].map((i) => i.id)
+  const itemIds = [...base, sweater, coat, ...accessories].filter((i): i is Item => !!i).map((i) => i.id)
   return { ok: true, itemIds, key, notes }
 }
 
@@ -121,7 +138,9 @@ export interface SwipeInput extends Omit<PickInput, 'current' | 'random'> {
   outfit: ItemId[] // the outfit on screen, coat included
 }
 
-const SINGULAR: Record<Item['category'], string> = { top: 'top', bottom: 'bottom', dress: 'dress', shoes: 'pair of shoes', outerwear: 'coat' }
+const SINGULAR: Record<Item['category'], string> = {
+  top: 'top', bottom: 'bottom', dress: 'dress', sweater: 'sweater', shoes: 'pair of shoes', outerwear: 'coat', hat: 'hat', bag: 'bag',
+}
 
 // Rule 12's choices for the slot `itemId` is in, in the order they were added, `itemId`
 // included: what Today's carousel for that slot shows. Empty if `itemId` isn't an item.
@@ -133,14 +152,15 @@ export function slotChoices(input: SwipeInput, itemId: ItemId): Item[] {
 
   const fitsDay = fitsDayFor(settings, date)
   const target = forecast && targetWarmth(feelsLike(forecast.high, settings.comfortOffset))
-  const restBase = outfit.filter((id) => id !== itemId).map((id) => byId.get(id)).filter((i): i is Item => !!i && isBase(i))
+  const rest = outfit.filter((id) => id !== itemId).map((id) => byId.get(id)).filter((i): i is Item => !!i)
 
   const fits = (c: Item) => {
     if (!fitsDay(c)) return false
-    if (!isBase(c)) return true // a coat: rules 1–3 only, as in rule 9
+    if (!counted(c)) return true // a coat, hat or bag: rules 1–3 only, as in rules 9 and 14
+    if (!goesTogether([...rest.filter(counted), c])) return false
+    if (!isBase(c)) return true // a sweater: no warmth rule, and not part of the outfit's identity
     if (target !== undefined && Math.abs(c.warmth - target) > 1) return false
-    const base = [...restBase, c]
-    return goesTogether(base) && !input.dislikes.has(outfitKey(base.map((i) => i.id)))
+    return !input.dislikes.has(outfitKey([...rest.filter(isBase), c].map((i) => i.id)))
   }
   return items
     .filter((c) => c.category === swiped.category && (c.id === itemId || fits(c)))
@@ -170,7 +190,7 @@ function combos(items: Item[], locked: Item[], passes: (i: Item) => boolean): It
   return out
 }
 
-// Rules 6 and 7, on base + shoes only (the coat isn't counted).
+// Rules 6 and 7, on the base and the sweater (coats, hats and bags aren't counted).
 function goesTogether(outfit: Item[]): boolean {
   const statements = new Set(outfit.map((i) => i.color).filter((c) => !NEUTRALS.has(c)))
   const patterned = outfit.filter((i) => i.pattern !== 'solid').length
@@ -192,6 +212,31 @@ function pickCoat(
     coats = coats.filter((c) => c.warmth === warmest)
   }
   return coats[Math.floor(random() * coats.length)]
+}
+
+// Rule 13. Returns the sweater, undefined when none is wanted (or there are no sweaters
+// at all), or null for "No clean sweater goes with this."
+function pickSweater(
+  items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, base: Item[],
+  forecast: Forecast | undefined, comfortOffset: number, random: () => number,
+): Item | undefined | null {
+  const lockedSweater = locked.find((i) => i.category === 'sweater')
+  if (lockedSweater) return lockedSweater
+  if (!forecast || !sweaterWanted(forecast, comfortOffset)) return undefined
+  const all = items.filter((i) => i.category === 'sweater')
+  if (all.length === 0) return undefined
+  const fit = all.filter((i) => fitsDay(i) && goesTogether([...base, i]))
+  return fit.length ? fit[Math.floor(random() * fit.length)] : null
+}
+
+// Rule 14: a hat and a bag, picked last, whenever one passes rules 1–3. Not counted in rules 6 and 7.
+function pickAccessory(
+  category: 'hat' | 'bag', items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, random: () => number,
+): Item | undefined {
+  const lock = locked.find((i) => i.category === category)
+  if (lock) return lock
+  const fit = items.filter((i) => i.category === category && fitsDay(i))
+  return fit.length ? fit[Math.floor(random() * fit.length)] : undefined
 }
 
 // Rule 10's messages, the first that applies. Locked items count as passing. Called after

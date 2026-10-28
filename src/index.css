@@ -13,6 +13,7 @@
   --tile: #ffffff; /* behind every garment photo, in both themes */
   --on-tile: #000000;
   --on-tile-muted: #737373;
+  --placeholder: #f4f4f4;
   --tab-height: 52px;
   color-scheme: light;
 }
@@ -28,6 +29,7 @@
     --accent-text: #000000;
     --danger: #f2b8b5;
     --ok: #7fd49a;
+    --placeholder: #141414;
     color-scheme: dark;
   }
 }
@@ -150,8 +152,9 @@ button.danger { color: var(--danger); border-color: var(--danger); width: 100%; 
 .photo { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
 /* Catalog tiles: the whole garment, centered on white. */
 img.photo { object-fit: contain; background: var(--tile); padding: 8%; }
+img.photo.cut { background: transparent; } /* a cutout: just the garment, on the page's own background */
 /* A color dot on a light tile, so black and white items stay visible in both themes. */
-.placeholder { display: grid; place-items: center; background: #f4f4f4; }
+.placeholder { display: grid; place-items: center; background: var(--placeholder); }
 .placeholder-dot { width: 36%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 1px var(--on-tile-muted); }
 
 .fab {
@@ -230,10 +233,9 @@ button.link { padding: 0; border: 0; background: none; text-decoration: underlin
 
 .weather { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 6px; font-size: 11px; color: var(--muted); }
 
-/* Today: the outfit as a flat lay, pieces stacked tight on one white canvas like a
-   store's outfit shot (DESIGN §5 rule 12). Each slot's height follows its category, and
-   photos are trimmed to the garment, so a shirt comes out wide and trousers tall. */
-.looks { list-style: none; margin: 4px 0 0; padding: 12px 0; display: flex; flex-direction: column; gap: 4px; background: var(--tile); }
+/* Today: the outfit as a grid of equal squares, two across, in outfit order (DESIGN §5
+   rule 12). Cut-out garments sit straight on the page: white, or black in dark mode. */
+.looks { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .look-photo { position: relative; }
 .look-track {
   display: flex;
@@ -245,24 +247,20 @@ button.link { padding: 0; border: 0; background: none; text-decoration: underlin
 }
 .look-track::-webkit-scrollbar { display: none; }
 .look.locked .look-track { overflow-x: hidden; }
-.look-slide { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; height: min(62vw, 400px); }
-.look-bottom .look-slide { height: min(90vw, 560px); }
-.look-dress .look-slide { height: min(120vw, 720px); }
-.look-shoes .look-slide { height: min(34vw, 220px); }
-.look-slide .photo { width: 100%; height: 100%; aspect-ratio: auto; padding: 0 8%; }
-.look-slide .placeholder { background: transparent; }
-.look-slide .placeholder-dot { width: auto; height: 40%; }
+.look-slide { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; aspect-ratio: 1; }
+.look-slide .photo { width: 100%; height: 100%; padding: 10%; }
+.look-slide .placeholder-dot { width: 36%; }
 .look-lock {
   position: absolute;
   top: 0;
-  right: 4px;
+  right: 0;
   padding: 8px;
   border: 0;
-  color: var(--on-tile-muted);
+  color: var(--muted);
   line-height: 0;
 }
-.look-lock[aria-pressed='true'] { color: var(--on-tile); }
-.look-count { position: absolute; right: 14px; bottom: 0; font-size: 11px; color: var(--on-tile-muted); letter-spacing: 0.06em; }
+.look-lock[aria-pressed='true'] { color: var(--text); }
+.look-count { position: absolute; right: 8px; bottom: 4px; font-size: 10px; color: var(--muted); letter-spacing: 0.06em; }
 
 .pieces { list-style: none; margin: 16px 0 0; padding: 0; border-top: 1px solid var(--line); }
 .pieces li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }

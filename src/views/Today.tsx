@@ -12,7 +12,7 @@ import {
   clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday, wearToday,
 } from '../db/repo'
 import { type Item, type ItemId, type Settings, type TodayState, outfitKey } from '../db/schema'
-import { OCCASIONS, type Occasion, label } from '../db/values'
+import { CATEGORIES, OCCASIONS, type Occasion, label } from '../db/values'
 import { currentPosition, fetchForecast } from '../weather/openMeteo'
 
 const WEATHER_WAIT_MS = 5000 // DESIGN Flow C, "Weather"
@@ -143,7 +143,9 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   }, [plan, dislikes, weatherDone])
   /* oxlint-enable react/set-state-in-effect, react-hooks/exhaustive-deps */
 
+  // In outfit order: shirt and pants (or a dress), then sweater, shoes, coat, hat and bag.
   const shown = plan.repick ? [] : plan.state.itemIds.map((id) => byId.get(id)!).filter(Boolean)
+    .sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category))
   const locked = new Set(plan.state.locked)
   const hasCoat = shown.some((i) => !isBase(i))
   const fitsDay = fitsDayFor(settings, date)
@@ -287,11 +289,10 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
 
 const SETTLE_MS = 120 // a carousel counts as settled this long after its last scroll event
 
-// One slot of the outfit's flat lay as a carousel of its choices (DESIGN §5 rule 12): a
+// One square of the outfit grid as a carousel of its slot's choices (DESIGN §5 rule 12): a
 // native horizontal scroller that snaps a photo at a time and follows the finger. When it
 // settles on another item, that item replaces this one. The lock sits in the photo's
-// top-right corner; a locked slot shows only its item and doesn't scroll. The slot's
-// height comes from its category, so a shirt is wide and trousers are tall (CSS).
+// top-right corner; a locked slot shows only its item and doesn't scroll.
 function SlotCarousel({ item, choices, locked, onChoose, onToggleLock }: {
   item: Item; choices: Item[]; locked: boolean; onChoose: (id: ItemId) => void; onToggleLock: () => void
 }) {

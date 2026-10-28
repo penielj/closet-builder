@@ -30,11 +30,14 @@ export default function ItemForm({ item, items, onDone }: Props) {
   const [seasons, setSeasons] = useState<Season[]>(item?.seasons ?? [])
   const [warmth, setWarmth] = useState<Warmth>(item?.warmth ?? 2)
   const [brand, setBrand] = useState(item?.brand ?? '')
-  // `newPhoto`: undefined keeps the stored photo, null removes it, a Blob replaces it.
+  // `newPhoto`: undefined keeps the stored photo, null removes it, a Blob replaces it,
+  // with `newMask` when it was cut out.
   // Saving without touching the photo doesn't rewrite it.
-  const stored = useLiveQuery(async () => (item ? (await db.photos.get(item.id))?.blob : undefined), [item?.id])
+  const stored = useLiveQuery(async () => (item ? await db.photos.get(item.id) : undefined), [item?.id])
   const [newPhoto, setNewPhoto] = useState<Blob | null>()
-  const photo = newPhoto === undefined ? stored : newPhoto ?? undefined
+  const [newMask, setNewMask] = useState<Blob>()
+  const photo = newPhoto === undefined ? stored?.blob : newPhoto ?? undefined
+  const mask = newPhoto === undefined ? stored?.mask : newMask
   const [colorTouched, setColorTouched] = useState(Boolean(item))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
@@ -80,6 +83,7 @@ export default function ItemForm({ item, items, onDone }: Props) {
       const result = await processPhoto(source)
       if (n !== run.current) return
       setNewPhoto(result.photo)
+      setNewMask(result.mask)
       if (result.color && !colorTouched) setColor(result.color)
     } catch (e) {
       setError((e as Error).message)
@@ -105,8 +109,8 @@ export default function ItemForm({ item, items, onDone }: Props) {
     const fields = { name: name.trim(), category, color, pattern, occasions, seasons, warmth, brand: finalBrand }
     setBusy(true)
     try {
-      if (item) await updateItem(db, item.id, { ...fields, photo: newPhoto })
-      else await addItem(db, { ...fields, photo: newPhoto ?? undefined })
+      if (item) await updateItem(db, item.id, { ...fields, photo: newPhoto, mask: newMask })
+      else await addItem(db, { ...fields, photo: newPhoto ?? undefined, mask: newMask })
       onDone()
     } catch (e) {
       setError(`Couldn't save: ${(e as Error).message}`)
@@ -129,7 +133,7 @@ export default function ItemForm({ item, items, onDone }: Props) {
       </header>
 
       <div className="photo-picker">
-        <Photo blob={photo} color={color} alt={name || 'New item'} />
+        <Photo blob={photo} mask={mask} color={color} alt={name || 'New item'} />
         <label className="button">
           {photo ? 'Change photo' : 'Take or choose photo'}
           <input type="file" accept="image/*" hidden onChange={(e) => onPhoto(e.target.files?.[0])} />

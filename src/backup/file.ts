@@ -21,6 +21,7 @@ const itemSchema = z.object({
   warmth: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   brand: z.string().optional(),
   photo: z.string().startsWith('data:image/').optional(),
+  mask: z.string().startsWith('data:image/').optional(), // the cutout's mask; older files have none
   inHamper: z.boolean(),
   skipDate: date.optional(),
   createdAt: z.string(),
@@ -49,7 +50,7 @@ const backupSchema = z.object({
 })
 
 // In the file each item carries its photo; in the database photos have their own table.
-export type ItemWithPhoto = Item & { photo?: Blob }
+export type ItemWithPhoto = Item & { photo?: Blob; mask?: Blob }
 
 // What import writes: items with their photos decoded back to Blobs.
 export interface Backup {
@@ -68,8 +69,12 @@ export async function buildBackupFile(snapshot: Snapshot, fileName: string, now 
   const { today: _today, ...settings } = snapshot.settings // `today` is never backed up
   const head = { app: BACKUP_APP, version: BACKUP_VERSION, exportedAt: now.toISOString(), settings }
   const parts: string[] = [JSON.stringify(head).slice(0, -1), ',"items":[']
-  for (const [n, { photo, ...item }] of snapshot.items.entries()) {
-    const record = photo ? { ...item, photo: await blobToDataUrl(photo) } : item
+  for (const [n, { photo, mask, ...item }] of snapshot.items.entries()) {
+    const record = {
+      ...item,
+      ...(photo && { photo: await blobToDataUrl(photo) }),
+      ...(mask && { mask: await blobToDataUrl(mask) }),
+    }
     parts.push(n ? ',' : '', JSON.stringify(record))
   }
   const outfits = snapshot.outfits.map(({ itemIds, rating }) => ({ itemIds, rating }))
@@ -100,7 +105,9 @@ export function parseBackup(text: string): Backup {
   const { settings, items, outfits } = parsed.data
   return {
     settings,
-    items: items.map(({ photo, ...item }) => ({ ...item, ...(photo && { photo: dataUrlToBlob(photo) }) }) as ItemWithPhoto),
+    items: items.map(({ photo, mask, ...item }) => ({
+      ...item, ...(photo && { photo: dataUrlToBlob(photo) }), ...(mask && { mask: dataUrlToBlob(mask) }),
+    }) as ItemWithPhoto),
     outfits,
   }
 }

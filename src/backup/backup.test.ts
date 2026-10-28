@@ -79,7 +79,7 @@ describe('backup round trip (DESIGN §10)', () => {
       text.slice(0, text.length / 2),
       JSON.stringify({ ...json, app: 'something-else' }),
       JSON.stringify({ ...json, version: BACKUP_VERSION + 1 }),
-      JSON.stringify({ ...json, items: [{ ...json.items[0], category: 'hat' }] }),
+      JSON.stringify({ ...json, items: [{ ...json.items[0], category: 'scarf' }] }),
       JSON.stringify({ ...json, items: [json.items[0], json.items[0]] }),
       JSON.stringify({ ...json, items: [{ ...json.items[0], occasions: [] }] }),
     ]
@@ -116,5 +116,16 @@ describe('backup status (DESIGN Flow E)', () => {
       .toBe('Last backup: yesterday · 1 change since')
     expect(backupStatus({ lastBackupAt: new Date(2026, 9, 27, 1).toISOString(), changesSinceBackup: 2 }, now))
       .toBe('Last backup: today · 2 changes since')
+  })
+})
+
+describe('cutout masks (DESIGN §4 "Look")', () => {
+  it('survive export and import, and a photo without one stays without', async () => {
+    const mask = new Blob([new Uint8Array(800).map((_, i) => i % 256)], { type: 'image/png' })
+    const id = await addItem(db, item({ name: 'Cut out', photo: photo(5), mask }))
+    const target = await freshDb()
+    await importBackup(target, parseBackup(await exportText(db)))
+    expect(await bytes((await target.photos.get(id))!.mask)).toEqual(await bytes(mask))
+    expect((await target.photos.get(ids[0]))!.mask).toBeUndefined()
   })
 })

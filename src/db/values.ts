@@ -1,7 +1,8 @@
 // Fixed tag values, copied exactly from DESIGN §6. Every backup file stores these
 // strings, so renaming or removing one later needs a backup migration. Adding one doesn't.
 
-export const CATEGORIES = ['top', 'bottom', 'dress', 'shoes', 'outerwear'] as const
+// In outfit order: the base (top and bottom, or a dress), then the layers and accessories.
+export const CATEGORIES = ['top', 'bottom', 'dress', 'sweater', 'shoes', 'outerwear', 'hat', 'bag'] as const
 export const PATTERNS = ['solid', 'striped', 'checked', 'print'] as const
 export const OCCASIONS = ['casual', 'work', 'formal', 'workout'] as const
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'] as const
@@ -41,7 +42,8 @@ export const COLOR_NAMES = PALETTE.map((c) => c.name) as PaletteColor[]
 export const NEUTRALS: ReadonlySet<PaletteColor> = new Set(PALETTE.filter((c) => c.neutral).map((c) => c.name))
 
 export const CATEGORY_LABELS: Record<Category, string> = {
-  top: 'Tops', bottom: 'Bottoms', dress: 'Dresses', shoes: 'Shoes', outerwear: 'Outerwear',
+  top: 'Tops', bottom: 'Bottoms', dress: 'Dresses', sweater: 'Sweaters', shoes: 'Shoes', outerwear: 'Outerwear',
+  hat: 'Hats', bag: 'Bags',
 }
 export const WARMTH_LABELS: Record<Warmth, string> = { 1: 'Light', 2: 'Medium', 3: 'Heavy' }
 export const label = (value: string) => value.charAt(0).toUpperCase() + value.slice(1).replace('-', ' ')

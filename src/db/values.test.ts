@@ -5,7 +5,7 @@ import { CATEGORIES, OCCASIONS, PALETTE, PATTERNS, SEASONS } from './values'
 // renamed or removed, which needs a backup migration and a DESIGN §6 update.
 describe('tag values match DESIGN §6', () => {
   it('has the fixed lists', () => {
-    expect(CATEGORIES).toEqual(['top', 'bottom', 'dress', 'shoes', 'outerwear'])
+    expect(CATEGORIES).toEqual(['top', 'bottom', 'dress', 'sweater', 'shoes', 'outerwear', 'hat', 'bag'])
     expect(PATTERNS).toEqual(['solid', 'striped', 'checked', 'print'])
     expect(OCCASIONS).toEqual(['casual', 'work', 'formal', 'workout'])
     expect(SEASONS).toEqual(['spring', 'summer', 'autumn', 'winter'])
