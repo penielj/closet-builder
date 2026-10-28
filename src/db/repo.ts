@@ -4,6 +4,7 @@ import {
   type ClosetDB, type Forecast, type Item, type ItemId, type Settings, type TodayState,
   SETTINGS_KEY, defaultSettings, outfitKey, roundCoord, sortIds,
 } from './schema'
+import { NEVER, washAfter } from '../closet/wear'
 import type { Occasion } from './values'
 
 // The only write path in the app (DESIGN §7). Real changes bump changesSinceBackup in
@@ -65,11 +66,31 @@ export const setComfortOffset = (db: ClosetDB, value: Settings['comfortOffset'])
   tracked(db, [], async () => { await db.settings.update(SETTINGS_KEY, { comfortOffset: value }) })
 
 // Untracked (temporary state):
+// Out of the hamper means washed, so the wear count starts again (rule 16).
 export const setInHamper = (db: ClosetDB, id: ItemId, value: boolean) =>
-  db.items.update(id, { inHamper: value })
+  db.items.update(id, value ? { inHamper: true } : { inHamper: false, wears: 0 })
 
 export const laundryDone = (db: ClosetDB) =>
-  db.items.filter((i) => i.inHamper).modify({ inHamper: false })
+  db.items.filter((i) => i.inHamper).modify({ inHamper: false, wears: 0 })
+
+// Rule 16, "Wore this": a wear for each piece, and the ones that reached their limit go to
+// the hamper. Today's outfit is marked worn, so it stays as it is. Returns the hampered ids.
+export const wearOutfit = (db: ClosetDB, ids: ItemId[], date: string) =>
+  db.transaction('rw', [db.items, db.settings], async () => {
+    const hampered: ItemId[] = []
+    for (const id of ids) {
+      const item = await db.items.get(id)
+      if (!item) continue
+      const wears = (item.wears ?? 0) + 1
+      const limit = washAfter(item)
+      const full = limit !== NEVER && wears >= limit
+      await db.items.update(id, { wears, lastWorn: date, ...(full && { inHamper: true }) })
+      if (full) hampered.push(id)
+    }
+    const s = (await db.settings.get(SETTINGS_KEY))!
+    if (s.today?.date === date) await db.settings.update(SETTINGS_KEY, { today: { ...s.today, worn: true } })
+    return hampered
+  })
 
 export const skipToday = (db: ClosetDB, id: ItemId, today: string) =>
   db.items.update(id, { skipDate: today })

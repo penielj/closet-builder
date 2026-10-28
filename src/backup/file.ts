@@ -25,6 +25,9 @@ const itemSchema = z.object({
   inHamper: z.boolean(),
   skipDate: date.optional(),
   createdAt: z.string(),
+  wears: z.number().int().nonnegative().optional(), // wear tracking; older files have none
+  lastWorn: date.optional(),
+  washAfter: z.number().int().nonnegative().optional(),
 })
 
 const settingsSchema = z.object({

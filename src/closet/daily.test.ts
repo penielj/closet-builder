@@ -51,3 +51,11 @@ describe('localDate', () => {
     expect(localDate(new Date(2026, 11, 31, 0, 1))).toBe('2026-12-31')
   })
 })
+
+describe('a worn outfit (rule 16)', () => {
+  it('stays as it is, even with pieces now in the hamper; only deleted ones drop out', () => {
+    const items = [{ id: 1, inHamper: true }, { id: 2, inHamper: false }] as Item[]
+    const today = { date: '2026-10-28', itemIds: [1, 2, 3], locked: [], worn: true }
+    expect(planToday(today, items, '2026-10-28')).toEqual({ state: { ...today, itemIds: [1, 2] }, repick: false })
+  })
+})

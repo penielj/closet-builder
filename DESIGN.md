@@ -1,6 +1,6 @@
 # Closet Builder: Design Doc
 
-**Status:** v10 (layers, photography look) · **Date:** 2026-10-28 · **Author:** Peniel Johnson
+**Status:** v11 (wear tracking, quiet-luxury look) · **Date:** 2026-10-28 · **Author:** Peniel Johnson
 
 ## 1. Summary
 Closet Builder is a personal web app, installable on your phone. Each morning it suggests an outfit made only from clothes you own that are **clean today**, chosen to suit the weather and the occasion. Everything stays on the device, with no account and no server.
@@ -29,8 +29,9 @@ Closet Builder is a personal web app, installable on your phone. Each morning it
   - Mark a piece **Not today**, which excludes it until midnight. In the Closet tab it's dimmed with a **Wear today** button that undoes it.
   - Send a piece to the **Hamper**.
   - **Remove** a layer (sweater, jacket, hat or bag) for the day, or tap a dashed **+ Sweater**, **+ Jacket**, **+ Hat** or **+ Bag** square to put one on. A square shows only when one of those fits and isn't in the outfit (rule 15).
-  - Tap **👎** to never see this outfit again. A new outfit is picked straight away.
+  - Tap **Not for me** (a 👎) to never see this outfit again. A new outfit is picked straight away.
   - Tap **Shuffle** for a new outfit.
+  - Tap **Wore this** once you've worn it (rule 16). Each piece counts a wear, pieces at their limit go to the hamper, and the outfit stays as it is for the rest of the day: no swiping, locks or layer changes, and the list says "To the hamper" or the wear count instead of the links. A line reads "Worn today. 1 piece went to the hamper."
 
 **Today's outfit stays put.** The picked outfit and its locks are saved for the day, so reopening the app shows the same outfit. A new outfit is picked, keeping locked items, only when:
 - you tap Shuffle or 👎, or change the occasion (a swipe changes only the swiped item)
@@ -50,7 +51,7 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 ## 4. Features
 | Area | Feature |
 |---|---|
-| Look | A clothing-photography look in the spirit of SSENSE: white page (black in dark mode), Helvetica, square corners, small uppercase labels, filters as underlined text. Garments are shown whole and alone: a photo with a cutout mask is shown with the mask as its transparency, trimmed to the garment, straight on the page's background, white or black. A photo without a mask keeps a white square, and on Today it's trimmed to its non-white pixels (all channels below 245) instead. Both trims keep a 2% margin and happen at display time, so older photos get them too (`src/photo/trim.ts`). Today's grid squares are all the same size. |
+| Look | Quiet luxury, for people who shop SSENSE and Grailed and buy Le Labo and Diptyque: warm paper (#f6f4ef; warm black #11100e in dark mode), square corners, hairlines, no shadows, and three voices. Names and screen titles are in a serif (Cormorant Garamond, the Diptyque note), labels in a typewriter face (Courier Prime: brands, filters, counts, notes, and Today's label line "College Park · 28 Oct 2026 · 20° / 8° · rain 0%", the Le Labo note), buttons and tabs in a small tracked Helvetica (the SSENSE note). Both faces are bundled (Latin only, about 90KB), so they work offline. Garments are shown whole and alone: a photo with a cutout mask is shown with the mask as its transparency, trimmed to the garment, straight on the page's background, white or black. A photo without a mask keeps a white square, and on Today it's trimmed to its non-white pixels (all channels below 245) instead. Both trims keep a 2% margin and happen at display time, so older photos get them too (`src/photo/trim.ts`). Today's grid squares are all the same size. |
 | Closet | A photo grid filtered by category, each item with its brand (bold, uppercase) over its name. Add, edit and delete items. Hamper and Not today items are dimmed. |
 | Cutout | RMBG-1.4 (BRIA; free for non-commercial use) runs on the device through transformers.js: on the GPU at half precision (~88MB) when the phone has WebGPU, otherwise on the CPU at 8 bits (~44MB). The model predicts a mask at 1024×1024, and the photo gets that mask as its transparency. The usual resize then saves the garment on white as the JPEG, plus the transparency as a grayscale PNG mask next to it (any photo with transparency, an iPhone cutout too, gets one), so it can also be shown on black. The library comes from jsdelivr and is kept in Cache Storage, and the model is cached by the library, so after the first download it works offline. Any failure keeps the photo as it is, with a note (`src/photo/cutout.ts`). Worn clothes keep the person: the model keeps the subject. |
 | Photos | Taken with the camera or uploaded, then resized on the device to about 800px JPEG. That also removes EXIF data, including location. Transparent areas (an iPhone cutout) are filled with white, since JPEG has no transparency and would turn them black. The add-item form suggests laying the item flat on a white sheet in daylight. |
@@ -101,6 +102,8 @@ Editing an item doesn't trigger a new pick, even if the item would no longer fit
 13. **Sweater:** added after the base when the feels-like high is below 18°C (with the comfort offset; no forecast, no sweater). It's chosen at random from sweaters that pass rules 1–3 and keep rules 6 and 7 with the base. Rule 4 doesn't apply. If none goes with the base, the note says "No clean sweater goes with this," but only when there are any sweaters at all. A locked sweater is always shown.
 14. **Hat and bag:** picked last, at random from those that pass rules 1–3, whenever there is one; without one nothing is added and nothing is said. A locked one is always shown. They're accessories, so rules 6 and 7 don't count them.
 15. **Only the slot that changed:** when pieces leave today's outfit (hamper, Not today, deleted), the rest stays and only their slots are refilled. A base slot takes a piece that fits with the rest (rules 1–4, 6 and 7 with the sweater on, and the 👎s); a layer is replaced by another of its kind that fits, or left out. If the base can't be completed, or nothing of it is left, a new outfit is picked. Adding a layer by hand picks at random from the same choices.
+16. **Wear tracking:** **Wore this** adds a wear to each piece and sets its `lastWorn`. A piece whose wears reach its **Wash after** goes to the hamper on its own; taking it out (or Laundry done) means washed, so its count starts again. Wash after is set per item in its form, or falls back to its category: tops 1; bottoms, dresses and sweaters 3; shoes, coats, hats and bags never. Workout-only clothes default to 1. Wears are temporary state, like the hamper, so they don't count toward the backup reminder; a Wash after setting does. Closet shows "2/3 wears", or "Worn 4×" for what never goes on its own.
+17. **Rotation:** among the outfits that are left, prefer those with the fewest unlocked pieces worn in the last 3 days, and pick layers from rested pieces first. When everything was worn recently, all of it is still allowed.
 
 An outfit's identity (its `key`) is its top, bottom or dress plus its shoes, **not** the coat. That way a disliked outfit doesn't come back just because the coat changed. 👎 saves only those IDs.
 
@@ -134,13 +137,14 @@ Jumpsuits count as `dress`; sweaters, cardigans and hoodies as `sweater` (before
 **Data model**
 ```ts
 Item     { id /* auto-increment */, name, category, color, pattern, occasions[], seasons[],
-           warmth: 1|2|3, brand?, inHamper, skipDate?: 'YYYY-MM-DD', createdAt }
+           warmth: 1|2|3, brand?, inHamper, skipDate?: 'YYYY-MM-DD', createdAt,
+           wears?, lastWorn?: 'YYYY-MM-DD', washAfter? /* 0 never; unset: the category's */ }
 Photo    { itemId /* primary key, = Item.id */, blob: Blob /* JPEG on white */, mask?: Blob /* PNG, from a cutout */ }
 Outfit   { key /* base + shoes ids, sorted numerically, joined with '|' */, itemIds[], rating: 'dislike' }
 Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } /* rounded to ~1km */,
            lastBackupAt?, changesSinceBackup,
            today?: { date: 'YYYY-MM-DD', itemIds[] /* incl. coat */, locked[],
-                     forecast?: { high, low, rainChance } } }
+                     forecast?: { high, low, rainChance }, worn?: boolean } }
 ```
 - **Why photos have their own table:** an update rewrites the whole record. When the photo lived on the item, Laundry done re-saved every photo in the hamper, and on the iPhone the items stayed in the hamper until the app was closed and reopened, then showed no photos until it was reopened again (phone test 1). Now hamper, Not today and item edits that keep the photo never touch the `photos` table. Deleting an item deletes its photo in the same transaction. Database version 3 moves existing photos over.
 - Sort the IDs numerically: the default sort puts `10` before `9`.
@@ -153,7 +157,7 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
   "settings": { ... }, "items": [{ "id": 17, ..., "photo": "data:image/jpeg;base64,..." }],
   "outfits": [{ "itemIds": [3, 17], "rating": "dislike" }] }
 ```
-- **Photos embedded as base64:** about 100KB each, so 150 items come to about 15MB. Each photo stays on its item in the file, so the `photos` table doesn't change the format or its `version`. A cutout's mask is an optional `mask` data URL next to `photo`; older files simply have none, and older apps drop it.
+- **Photos embedded as base64:** about 100KB each, so 150 items come to about 15MB. Each photo stays on its item in the file, so the `photos` table doesn't change the format or its `version`. A cutout's mask is an optional `mask` data URL next to `photo`; older files simply have none, and older apps drop it. Wear tracking's `wears`, `lastWorn` and `washAfter` are optional item fields the same way.
 - **Checks before writing:** the `app` and `version` fields first, then every record against the zod schemas. A broken file, or one from a newer version, changes nothing and shows a clear message.
 - **All or nothing:** the import runs in one transaction. It clears the closet, writes the backup with its original IDs so dislikes still point at the right items, clears `today`, sets `lastBackupAt` and resets the change count.
 - **Saving:** `navigator.share` with a file where that works, otherwise a download. The installed iPhone app never falls back to a download, because one can fail there without saying so.
@@ -183,7 +187,7 @@ Settings { comfortOffset: -3|0|3, lastOccasion, location?: { lat, lon, label? } 
    - **v10, from the second round of feedback:** Today as a grid of equal squares; the base (shirt and pants) picked first, then a sweater by weather, the coat, a hat and a bag (rules 5, 13, 14; new categories `sweater`, `hat`, `bag`); garments shown cut out on white or black by theme, with the cutout mask stored next to each photo and a **Cut out N photos** button in Settings for older ones.
 
 ## 9. Later, if it's missed
-Liked outfits · color modes (tonal, complementary) · automatic dirty tracking · cloud backup · a backup reminder · counting the coat in the color and pattern rules.
+Liked outfits · color modes (tonal, complementary) · cloud backup · a backup reminder · counting the coat in the color and pattern rules.
 
 ## 10. Testing
 - **Unit tests for the picker:**

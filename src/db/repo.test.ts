@@ -3,7 +3,7 @@ import Dexie from 'dexie'
 import { ClosetDB, SETTINGS_KEY } from './schema'
 import {
   type NewItem, addItem, clearDislikes, deleteItem, forgetDislike, dislikeOutfit, ensureSettings, laundryDone, saveForecast, saveToday,
-  setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, updateItem, wearToday,
+  setComfortOffset, setInHamper, setLastOccasion, setLocation, skipToday, updateItem, wearOutfit, wearToday,
 } from './repo'
 
 let db: ClosetDB
@@ -243,5 +243,31 @@ describe('forgetting one 👎', () => {
     await forgetDislike(db, '1|2')
     expect((await db.outfits.toArray()).map((o) => o.key)).toEqual(['3|4'])
     expect(await changes()).toBe(before + 1)
+  })
+})
+
+describe('wear tracking (rule 16)', () => {
+  it('counts a wear, sends pieces at their limit to the hamper, and marks today worn', async () => {
+    const tee = await addItem(db, shirt) // a top: 1 wear
+    const jeans = await addItem(db, { ...shirt, name: 'Jeans', category: 'bottom', washAfter: 2 })
+    const shoes = await addItem(db, { ...shirt, name: 'Sneakers', category: 'shoes' }) // never
+    await saveToday(db, { date: '2026-10-28', itemIds: [tee, jeans, shoes], locked: [] })
+    const before = await changes()
+
+    expect(await wearOutfit(db, [tee, jeans, shoes], '2026-10-28')).toEqual([tee])
+    expect(await db.items.get(jeans)).toMatchObject({ wears: 1, lastWorn: '2026-10-28', inHamper: false })
+    expect(await db.items.get(tee)).toMatchObject({ wears: 1, inHamper: true })
+    expect((await db.settings.get(SETTINGS_KEY))!.today!.worn).toBe(true)
+    expect(await wearOutfit(db, [jeans, shoes], '2026-10-29')).toEqual([jeans])
+    expect((await db.items.get(shoes))!.wears).toBe(2)
+    expect(await changes()).toBe(before) // like the hamper, not a real change
+  })
+
+  it('starts counting again once a piece leaves the hamper', async () => {
+    const a = await addItem(db, shirt), b = await addItem(db, shirt)
+    await wearOutfit(db, [a, b], '2026-10-28')
+    await setInHamper(db, a, false)
+    await laundryDone(db)
+    expect((await db.items.toArray()).map((i) => [i.inHamper, i.wears])).toEqual([[false, 0], [false, 0]])
   })
 })

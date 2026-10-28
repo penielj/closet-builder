@@ -1,4 +1,5 @@
 import { type Forecast, type Item, type ItemId, type Settings, outfitKey } from '../db/schema'
+import { rested, wornRecently } from './wear'
 import { type Category, NEUTRALS, type Occasion, type Season, type Warmth, label } from '../db/values'
 
 // The outfit rules of DESIGN §5, as a pure function: no database or React in here.
@@ -120,14 +121,18 @@ export function pickOutfit(input: PickInput): PickResult {
       if (fresh.every((c) => c.includes(i))) notes.push(`${i.name} is the only ${SINGULAR[i.category]} that fits today.`)
     }
   }
+  // Rule 17: rotation. Prefer the outfits with the fewest unlocked pieces worn in the last few days.
+  const recent = (c: Item[]) => c.filter((i) => !input.locked.includes(i.id) && wornRecently(i, date)).length
+  const least = Math.min(...options.map(recent))
+  options = options.filter((c) => recent(c) === least)
   const base = options[Math.floor(random() * options.length)]
 
   // Then the layers, in order (rules 13, 9 and 14).
-  const sweater = pickSweater(items, locked, fitsDay, base, forecast, settings.comfortOffset, random)
+  const sweater = pickSweater(items, locked, fitsDay, base, forecast, settings.comfortOffset, random, date)
   if (sweater === null) notes.push(NO_SWEATER)
-  const coat = pickCoat(items, locked, fitsDay, forecast, settings.comfortOffset, random)
+  const coat = pickCoat(items, locked, fitsDay, forecast, settings.comfortOffset, random, date)
   if (coat === null) notes.push(NO_COAT)
-  const accessories = (['hat', 'bag'] as const).map((c) => pickAccessory(c, items, locked, fitsDay, random))
+  const accessories = (['hat', 'bag'] as const).map((c) => pickAccessory(c, items, locked, fitsDay, random, date))
 
   const key = outfitKey(base.map((i) => i.id))
   const itemIds = [...base, sweater, coat, ...accessories].filter((i): i is Item => !!i).map((i) => i.id)
@@ -237,13 +242,14 @@ function goesTogether(outfit: Item[]): boolean {
 // Rule 9. Returns the coat, undefined when none is wanted, or null for "No clean coat."
 function pickCoat(
   items: Item[], locked: Item[], fitsDay: (i: Item) => boolean,
-  forecast: Forecast | undefined, comfortOffset: number, random: () => number,
+  forecast: Forecast | undefined, comfortOffset: number, random: () => number, date: string,
 ): Item | undefined | null {
   const lockedCoat = locked.find((i) => i.category === 'outerwear')
   if (lockedCoat) return lockedCoat
   if (!forecast || !coatWanted(forecast, comfortOffset)) return undefined
   let coats = items.filter((i) => i.category === 'outerwear' && fitsDay(i))
   if (coats.length === 0) return null
+  coats = rested(coats, date) // rule 17
   if (feelsLike(forecast.low, comfortOffset) < 5) {
     const warmest = Math.max(...coats.map((c) => c.warmth))
     coats = coats.filter((c) => c.warmth === warmest)
@@ -255,24 +261,24 @@ function pickCoat(
 // at all), or null for "No clean sweater goes with this."
 function pickSweater(
   items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, base: Item[],
-  forecast: Forecast | undefined, comfortOffset: number, random: () => number,
+  forecast: Forecast | undefined, comfortOffset: number, random: () => number, date: string,
 ): Item | undefined | null {
   const lockedSweater = locked.find((i) => i.category === 'sweater')
   if (lockedSweater) return lockedSweater
   if (!forecast || !sweaterWanted(forecast, comfortOffset)) return undefined
   const all = items.filter((i) => i.category === 'sweater')
   if (all.length === 0) return undefined
-  const fit = all.filter((i) => fitsDay(i) && goesTogether([...base, i]))
+  const fit = rested(all.filter((i) => fitsDay(i) && goesTogether([...base, i])), date) // rule 17
   return fit.length ? fit[Math.floor(random() * fit.length)] : null
 }
 
 // Rule 14: a hat and a bag, picked last, whenever one passes rules 1–3. Not counted in rules 6 and 7.
 function pickAccessory(
-  category: 'hat' | 'bag', items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, random: () => number,
+  category: 'hat' | 'bag', items: Item[], locked: Item[], fitsDay: (i: Item) => boolean, random: () => number, date: string,
 ): Item | undefined {
   const lock = locked.find((i) => i.category === category)
   if (lock) return lock
-  const fit = items.filter((i) => i.category === category && fitsDay(i))
+  const fit = rested(items.filter((i) => i.category === category && fitsDay(i)), date) // rule 17
   return fit.length ? fit[Math.floor(random() * fit.length)] : undefined
 }
 

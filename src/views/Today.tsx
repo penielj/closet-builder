@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { localDate, planToday } from '../closet/daily'
+import { wearLabel } from '../closet/wear'
 import {
   NO_COAT, type NothingFits, coatWanted, fitsDayFor, isBase, pickOutfit, refillOutfit, slotChoices, slotFill, whyNotFor,
 } from '../closet/picker'
@@ -9,9 +10,9 @@ import LocationPicker from '../components/LocationPicker'
 import { StoredPhoto } from '../components/Photo'
 import { db } from '../db'
 import {
-  clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday, wearToday,
+  clearDislikes, dislikeOutfit, saveForecast, saveToday, setInHamper, setLastOccasion, setLocation, skipToday, wearOutfit, wearToday,
 } from '../db/repo'
-import { type Item, type ItemId, type Settings, type TodayState, outfitKey } from '../db/schema'
+import { type Item, type ItemId, SETTINGS_KEY, type Settings, type TodayState, outfitKey } from '../db/schema'
 import { CATEGORIES, type Category, OCCASIONS, type Occasion, label } from '../db/values'
 import { currentPosition, fetchForecast } from '../weather/openMeteo'
 
@@ -143,16 +144,23 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   /* oxlint-disable react/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!plan.repick || !dislikes || !weatherDone) return
-    if (plan.state.itemIds.length > 0) {
-      const gone = (today?.itemIds ?? []).filter((id) => !plan.state.itemIds.includes(id)).map((id) => byId.get(id)).filter((i): i is Item => !!i)
-      const itemIds = refillOutfit({ ...swipeInput, random: Math.random }, gone)
-      if (itemIds) {
-        setPickNotes([])
-        saveToday(db, { date, itemIds, locked: plan.state.locked })
-        return
+    let live = true
+    // The items and today's outfit arrive from separate queries, so "Wore this" can show its
+    // hampered pieces a moment before the outfit shows as worn. The saved row decides.
+    db.settings.get(SETTINGS_KEY).then((s) => {
+      if (!live || (s?.today?.date === date && s.today.worn)) return
+      if (plan.state.itemIds.length > 0) {
+        const gone = (today?.itemIds ?? []).filter((id) => !plan.state.itemIds.includes(id)).map((id) => byId.get(id)).filter((i): i is Item => !!i)
+        const itemIds = refillOutfit({ ...swipeInput, random: Math.random }, gone)
+        if (itemIds) {
+          setPickNotes([])
+          saveToday(db, { date, itemIds, locked: plan.state.locked })
+          return
+        }
       }
-    }
-    repick(plan.state)
+      repick(plan.state)
+    })
+    return () => { live = false }
   }, [plan, dislikes, weatherDone])
   /* oxlint-enable react/set-state-in-effect, react-hooks/exhaustive-deps */
 
@@ -160,6 +168,9 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
   const shown = plan.repick ? [] : plan.state.itemIds.map((id) => byId.get(id)!).filter(Boolean)
     .sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category))
   const locked = new Set(plan.state.locked)
+  // Rule 16: once worn, the outfit is fixed for the day and says what went to the hamper.
+  const worn = !!plan.state.worn
+  const hampered = shown.filter((i) => i.inHamper).length
   const isCoat = (i: Item) => i.category === 'outerwear'
   const fitsDay = fitsDayFor(settings, date)
   const whyNot = whyNotFor(settings, date)
@@ -211,9 +222,10 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
         : (
           <p className="weather">
             <span>
+              {place ?? 'Your location'} · {labelDate(date)} ·{' '}
               {forecast
-                ? <>{place ?? 'Your location'}: high {Math.round(forecast.high)}°, low {Math.round(forecast.low)}°, rain {Math.round(forecast.rainChance)}%</>
-                : weatherDone ? 'No weather, so warmth isn\'t checked.' : 'Checking the weather…'}
+                ? <>{Math.round(forecast.high)}° / {Math.round(forecast.low)}° · rain {Math.round(forecast.rainChance)}%</>
+                : weatherDone ? 'no weather, so warmth isn\'t checked' : 'checking the weather…'}
             </span>
             <button className="link" onClick={() => setChangingPlace(true)}>Change</button>
           </p>
@@ -234,13 +246,13 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
               <SlotCarousel
                 key={item.category} // one per slot, so the carousel stays put while its item changes
                 item={item}
-                choices={locked.has(item.id) ? [item] : slotChoices(swipeInput, item.id)}
-                locked={locked.has(item.id)}
+                choices={locked.has(item.id) || worn ? [item] : slotChoices(swipeInput, item.id)}
+                locked={locked.has(item.id) || worn}
                 onChoose={(id) => choose(item.id, id)}
-                onToggleLock={() => toggleLock(item.id)}
+                onToggleLock={worn ? undefined : () => toggleLock(item.id)}
               />
             ))}
-            {addable.map((c) => (
+            {!worn && addable.map((c) => (
               <li key={c} className="look look-add">
                 <button onClick={() => addLayer(c)}>+ {LAYER_NAMES[c]}</button>
               </li>
@@ -254,23 +266,39 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
                   {item.brand && <span className="look-brand">{item.brand}</span>}
                   <span className="look-name">{item.name}</span>
                 </span>
-                <span className="look-actions">
-                  {!isBase(item) && <button className="link" onClick={() => removeLayer(item.id)}>Remove</button>}
-                  <button className="link" onClick={() => skipToday(db, item.id, date)}>Not today</button>
-                  <button className="link" onClick={() => setInHamper(db, item.id, true)}>Hamper</button>
-                </span>
+                {worn
+                  ? <span className="look-actions muted">{item.inHamper ? 'To the hamper' : wearLabel(item)}</span>
+                  : (
+                    <span className="look-actions">
+                      {!isBase(item) && <button className="link" onClick={() => removeLayer(item.id)}>Remove</button>}
+                      <button className="link" onClick={() => skipToday(db, item.id, date)}>Not today</button>
+                      <button className="link" onClick={() => setInHamper(db, item.id, true)}>Hamper</button>
+                    </span>
+                  )}
               </li>
             ))}
           </ul>
-          <ul className="notes">
-            {pickNotes.map((n) => <li key={n}>{n}</li>)}
-            {noCoat && <li>{NO_COAT}</li>}
-            {pickNotes.length === 0 && !noCoat && <li className="hint">Swipe a piece to change just that one.</li>}
-          </ul>
-          <div className="outfit-bar">
-            <button onClick={dislike} aria-label="Never show this outfit again">👎</button>
-            <button className="primary" onClick={() => repick(plan.state)}>Shuffle</button>
-          </div>
+          {worn
+            ? (
+              <p className="worn" role="status">
+                Worn today.{' '}
+                {hampered === 0 ? 'Nothing needs washing yet.' : `${hampered} ${hampered === 1 ? 'piece went' : 'pieces went'} to the hamper.`}
+              </p>
+            )
+            : (
+              <>
+                <ul className="notes">
+                  {pickNotes.map((n) => <li key={n}>{n}</li>)}
+                  {noCoat && <li>{NO_COAT}</li>}
+                  {pickNotes.length === 0 && !noCoat && <li className="hint">Swipe a piece to change just that one.</li>}
+                </ul>
+                <div className="outfit-bar">
+                  <button onClick={dislike} aria-label="Never show this outfit again">Not for me</button>
+                  <button onClick={() => repick(plan.state)}>Shuffle</button>
+                  <button className="primary" onClick={() => wearOutfit(db, plan.state.itemIds, date)}>Wore this</button>
+                </div>
+              </>
+            )}
         </>
       ) : failure && plan.state.itemIds.length === 0 && weatherDone ? (
         <div className="panel">
@@ -318,6 +346,10 @@ function DailyOutfit({ items, settings, date, onEdit }: { items: Item[]; setting
 const LAYERS = ['sweater', 'outerwear', 'hat', 'bag'] as const
 const LAYER_NAMES: Record<(typeof LAYERS)[number], string> = { sweater: 'Sweater', outerwear: 'Jacket', hat: 'Hat', bag: 'Bag' }
 
+// "28 Oct 2026", as on a typed label. `date` is the local YYYY-MM-DD.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const labelDate = (date: string) => `${Number(date.slice(8, 10))} ${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`
+
 const pickOne = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)]
 
 const SETTLE_MS = 120 // a carousel counts as settled this long after its last scroll event
@@ -327,7 +359,7 @@ const SETTLE_MS = 120 // a carousel counts as settled this long after its last s
 // settles on another item, that item replaces this one. The lock sits in the photo's
 // top-right corner; a locked slot shows only its item and doesn't scroll.
 function SlotCarousel({ item, choices, locked, onChoose, onToggleLock }: {
-  item: Item; choices: Item[]; locked: boolean; onChoose: (id: ItemId) => void; onToggleLock: () => void
+  item: Item; choices: Item[]; locked: boolean; onChoose: (id: ItemId) => void; onToggleLock?: () => void // none once worn
 }) {
   const track = useRef<HTMLDivElement>(null)
   const at = Math.max(0, choices.findIndex((c) => c.id === item.id))
@@ -377,9 +409,11 @@ function SlotCarousel({ item, choices, locked, onChoose, onToggleLock }: {
             </div>
           ))}
         </div>
-        <button className="look-lock" aria-pressed={locked} aria-label={locked ? `Unlock ${item.name}` : `Lock ${item.name}`} onClick={onToggleLock}>
-          <LockIcon closed={locked} />
-        </button>
+        {onToggleLock && (
+          <button className="look-lock" aria-pressed={locked} aria-label={locked ? `Unlock ${item.name}` : `Lock ${item.name}`} onClick={onToggleLock}>
+            <LockIcon closed={locked} />
+          </button>
+        )}
         {choices.length > 1 && <span className="look-count">{inView + 1}/{choices.length}</span>}
       </div>
     </li>

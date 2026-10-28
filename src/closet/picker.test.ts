@@ -545,3 +545,23 @@ describe('refilling only the slot that changed (rule 15)', () => {
     expect(slotFill(input([t, b, s, navy, green], [t.id, b.id, s.id]), 'sweater').map((i) => i.id)).toEqual([navy.id])
   })
 })
+
+describe('rotation (rule 17)', () => {
+  it('prefers outfits with pieces not worn in the last 3 days, and layers too', () => {
+    const worn = item('top', { lastWorn: '2026-10-21' }) // yesterday
+    const rested = item('top', { lastWorn: '2026-10-10' })
+    const [b, s] = [item('bottom'), item('shoes')]
+    const h1 = item('hat', { lastWorn: '2026-10-22' }), h2 = item('hat')
+    for (const r of allPicks({ items: [worn, rested, b, s, h1, h2] })) {
+      expect(r.split(',').map(Number)).toEqual([rested.id, b.id, s.id, h2.id])
+    }
+  })
+
+  it('still wears recently worn pieces when nothing else fits, or when locked', () => {
+    const worn = item('top', { lastWorn: '2026-10-22' })
+    const [b, s] = [item('bottom', { lastWorn: '2026-10-22' }), item('shoes')]
+    expect(ids(pick({ items: [worn, b, s] }))).toEqual([worn.id, b.id, s.id])
+    const rested = item('top')
+    expect(ids(pick({ items: [worn, rested, b, s], locked: [worn.id] }))).toEqual([worn.id, b.id, s.id])
+  })
+})

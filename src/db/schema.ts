@@ -17,6 +17,10 @@ export interface Item {
   inHamper: boolean
   skipDate?: string // YYYY-MM-DD
   createdAt: string // ISO
+  // Wear tracking (DESIGN §5 rule 16). Older items have none of these.
+  wears?: number // since it was last washed
+  lastWorn?: string // YYYY-MM-DD
+  washAfter?: number // wears before it goes to the hamper on its own; 0 never; unset: its category's default
 }
 
 // Photos live in their own table, so hamper and "not today" writes never rewrite a photo
@@ -47,6 +51,7 @@ export interface TodayState {
   itemIds: ItemId[] // incl. coat; empty until one is picked
   locked: ItemId[]
   forecast?: Forecast
+  worn?: boolean // "Wore this" was tapped: the outfit stays as it is for the rest of the day
 }
 
 export interface Settings {

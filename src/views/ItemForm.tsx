@@ -8,6 +8,7 @@ import {
   CATEGORIES, CATEGORY_LABELS, OCCASIONS, PALETTE, PATTERNS, SEASONS, WARMTHS, WARMTH_LABELS,
   type Category, type Occasion, type PaletteColor, type Pattern, type Season, type Warmth, label,
 } from '../db/values'
+import { NEVER, WASH_CHOICES, defaultWashAfter } from '../closet/wear'
 import { cutout } from '../photo/cutout'
 import { loadImage, processPhoto } from '../photo/resize'
 
@@ -30,6 +31,7 @@ export default function ItemForm({ item, items, onDone }: Props) {
   const [seasons, setSeasons] = useState<Season[]>(item?.seasons ?? [])
   const [warmth, setWarmth] = useState<Warmth>(item?.warmth ?? 2)
   const [brand, setBrand] = useState(item?.brand ?? '')
+  const [washAfterN, setWashAfterN] = useState<number | undefined>(item?.washAfter) // unset: the category's default
   // `newPhoto`: undefined keeps the stored photo, null removes it, a Blob replaces it,
   // with `newMask` when it was cut out.
   // Saving without touching the photo doesn't rewrite it.
@@ -106,7 +108,7 @@ export default function ItemForm({ item, items, onDone }: Props) {
     // An existing brand with different capitals is reused, so "zara" becomes "Zara".
     const typed = brand.trim()
     const finalBrand = typed ? brands.find((b) => b.toLowerCase() === typed.toLowerCase()) ?? typed : undefined
-    const fields = { name: name.trim(), category, color, pattern, occasions, seasons, warmth, brand: finalBrand }
+    const fields = { name: name.trim(), category, color, pattern, occasions, seasons, warmth, brand: finalBrand, washAfter: washAfterN }
     setBusy(true)
     try {
       if (item) await updateItem(db, item.id, { ...fields, photo: newPhoto, mask: newMask })
@@ -213,6 +215,20 @@ export default function ItemForm({ item, items, onDone }: Props) {
           {WARMTHS.map((w) => (
             <button type="button" key={w} className={`chip ${warmth === w ? 'on' : ''}`} onClick={() => setWarmth(w)}>{WARMTH_LABELS[w]}</button>
           ))}
+        </div>
+      </fieldset>
+
+      <fieldset><legend>Wash after <span className="muted">(wears before it goes to the hamper on its own)</span></legend>
+        <div className="chips">
+          {WASH_CHOICES.map((n) => {
+            const isDefault = n === defaultWashAfter({ category, occasions })
+            const on = (washAfterN ?? defaultWashAfter({ category, occasions })) === n
+            return (
+              <button type="button" key={n} className={`chip ${on ? 'on' : ''}`} onClick={() => setWashAfterN(isDefault ? undefined : n)}>
+                {n === NEVER ? 'Never' : n}{isDefault ? ' · usual' : ''}
+              </button>
+            )
+          })}
         </div>
       </fieldset>
 

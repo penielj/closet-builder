@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { StoredPhoto } from '../components/Photo'
 import { db } from '../db'
 import { localDate } from '../closet/daily'
+import { wearLabel } from '../closet/wear'
 import { setInHamper, wearToday } from '../db/repo'
 import type { Item } from '../db/schema'
 import { CATEGORIES, CATEGORY_LABELS, type Category } from '../db/values'
@@ -37,6 +38,7 @@ export default function Closet({ items, onAdd, onEdit }: Props) {
                     <span className="card-text">
                       {item.brand && <span className="card-brand">{item.brand}</span>}
                       <span className="card-name">{item.name}</span>
+                      {(item.wears ?? 0) > 0 && <span className="card-wears">{wearLabel(item)}</span>}
                     </span>
                   </button>
                   {/* Not today is undone here (or on Today's "nothing fits" screen). */}
